@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
-import { AMUDIM, DAPIM, MASECHTOS, SEDERS } from "../data/shas.js";
-import { useI18n } from "../i18n.jsx";
-import { formatDafAmount } from "../lib/plan.js";
+import { useEffect, useRef, type RefObject } from "react";
+import { AMUDIM, DAPIM, MASECHTOS, SEDERS, type AmudSide, type Daf, type Masechta } from "../data/shas.ts";
+import { useI18n } from "../i18n.tsx";
+import { formatDafAmount } from "../lib/plan.ts";
 
-function cx(...parts) {
+function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
@@ -20,9 +20,22 @@ export function DafPicker({
   customOrder,
   lastRankByDaf,
   rank,
+}: {
+  position: number;
+  currentDafIndex: number | null;
+  currentAmud: AmudSide;
+  currentKey: string | null;
+  sessionDafIndices: number[];
+  viewKey: string;
+  onViewKey: (key: string) => void;
+  onPlace: (unit: Daf) => void;
+  order: string[];
+  customOrder: boolean;
+  lastRankByDaf: Map<number, number>;
+  rank: Map<number, number>;
 }) {
   const i18n = useI18n();
-  const activeRef = useRef(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
   const viewed = MASECHTOS.find((masechta) => masechta.key === viewKey) ?? MASECHTOS[0];
   const session = new Set(sessionDafIndices);
   const masechtaAmudim = AMUDIM.filter((unit) => unit.key === viewed.key);
@@ -32,7 +45,9 @@ export function DafPicker({
   else if (doneAmudim > 0) status = i18n.t("doneOf", { done: formatDafAmount(doneAmudim / 2), total: viewed.count });
 
   const ordered = customOrder
-    ? order.map((key) => MASECHTOS.find((masechta) => masechta.key === key)).filter(Boolean)
+    ? order
+        .map((key) => MASECHTOS.find((masechta) => masechta.key === key))
+        .filter((masechta): masechta is Masechta => masechta != null)
     : null;
 
   useEffect(() => {
@@ -148,7 +163,19 @@ export function DafPicker({
   );
 }
 
-function MasechtaChip({ masechta, active, here, activeRef, onViewKey }) {
+function MasechtaChip({
+  masechta,
+  active,
+  here,
+  activeRef,
+  onViewKey,
+}: {
+  masechta: Masechta;
+  active: boolean;
+  here: boolean;
+  activeRef: RefObject<HTMLButtonElement | null>;
+  onViewKey: (key: string) => void;
+}) {
   const i18n = useI18n();
   return (
     <button

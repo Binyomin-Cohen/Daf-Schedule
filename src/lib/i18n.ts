@@ -1,4 +1,4 @@
-import { WEEKDAYS } from "./plan.js";
+import { WEEKDAYS } from "./plan.ts";
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 const HEBREW_WEEKDAY_NAMES = ["יום ראשון", "יום שני", "יום שלישי", "יום רביעי", "יום חמישי", "יום שישי", "שבת"];
@@ -20,6 +20,10 @@ const STRINGS = {
     orderStandard: "Daf Yomi",
     orderCustom: "Custom",
     orderHint: "Drag a masechta, or use the arrows. The calendar continues from your current daf through whatever comes after it in this list.",
+    layout: "Layout",
+    layoutFull: "Full",
+    layoutSimple: "Simple",
+    layoutHint: "Simple starts at today’s card and leaves out each amud and its link.",
     resetOrder: "Reset to Daf Yomi",
     now: "Now",
     moveEarlier: "Move {name} earlier",
@@ -133,6 +137,10 @@ const STRINGS = {
     orderStandard: "דף יומי",
     orderCustom: "סדר שלי",
     orderHint: "גוררים מסכת, או לוחצים על החצים. הלוח ממשיך מהדף הנוכחי אל מה שבא אחריו ברשימה.",
+    layout: "תצוגה",
+    layoutFull: "מלאה",
+    layoutSimple: "מקוצרת",
+    layoutHint: "התצוגה המקוצרת מתחילה בכרטיס של היום, בלי כל עמוד והקישור שלו.",
     resetOrder: "חזרה לסדר הדף היומי",
     now: "עכשיו",
     moveEarlier: "הקדם את {name}",
@@ -233,7 +241,7 @@ const STRINGS = {
   },
 };
 
-function ordinal(number) {
+function ordinal(number: number): string {
   const mod100 = number % 100;
   if (mod100 >= 11 && mod100 <= 13) return `${number}th`;
   switch (number % 10) {
@@ -248,7 +256,9 @@ function ordinal(number) {
   }
 }
 
-function fill(template, vars) {
+type Messages = typeof STRINGS.en;
+
+function fill(template: string, vars?: Record<string, string | number>): string {
   let text = template;
   if (vars) {
     for (const [name, value] of Object.entries(vars)) {
@@ -258,53 +268,55 @@ function fill(template, vars) {
   return text;
 }
 
-export function makeI18n(language) {
+export function makeI18n(language: string) {
   const lang = language === "he" ? "he" : "en";
-  const dict = STRINGS[lang];
+  const dict: Messages = STRINGS[lang];
   return {
     lang,
     dir: lang === "he" ? "rtl" : "ltr",
     locale: lang === "he" ? "he-IL" : "en-US",
     weekdays: lang === "he" ? HEBREW_WEEKDAYS : WEEKDAYS,
-    weekdayName(day) {
+    weekdayName(day: number) {
       const names = lang === "he" ? HEBREW_WEEKDAY_NAMES : ENGLISH_WEEKDAY_NAMES;
       return names[day] ?? "";
     },
-    t(key, vars) {
-      return fill(dict[key] ?? STRINGS.en[key] ?? key, vars);
+    t(key: keyof Messages, vars?: Record<string, string | number>) {
+      return fill(dict[key] ?? STRINGS.en[key], vars);
     },
-    name(entity) {
+    name(entity: { name: string; hebrew: string } | null | undefined) {
       if (!entity) return "";
       return lang === "he" ? entity.hebrew : entity.name;
     },
-    short(entity) {
+    short(entity: { shortName: string; hebrew: string } | null | undefined) {
       if (!entity) return "";
       return lang === "he" ? entity.hebrew : entity.shortName;
     },
-    note(entity) {
+    note(entity: { note?: string | { en?: string; he?: string } | null } | null | undefined) {
       if (!entity?.note) return null;
       if (typeof entity.note === "string") return entity.note;
       return entity.note[lang] ?? entity.note.en ?? null;
     },
-    amud(letter) {
+    amud(letter: string) {
       if (lang !== "he") return letter;
       return letter === "a" ? "א" : "ב";
     },
-    dafWord(count) {
+    dafWord(count: number) {
       const amount = Math.round(Number(count) * 2) / 2;
       return amount === 0.5 || amount === 1 ? dict.wordDaf : dict.wordDapim;
     },
-    paceCaption(pace) {
+    paceCaption(pace: number) {
       if (pace === 0.5) return dict.halfADay;
       if (pace === 1) return dict.oneADay;
       return dict.manyADay;
     },
-    cycle(number) {
+    cycle(number: number) {
       return lang === "he" ? `מחזור ${number}` : `${ordinal(number)} cycle`;
     },
-    label(unit) {
+    label(unit: { name: string; hebrew: string; daf: number; amud: string }) {
       return `${lang === "he" ? unit.hebrew : unit.name} ${unit.daf}${lang === "he" ? (unit.amud === "a" ? "א" : "ב") : unit.amud}`;
     },
     groupOptions: { hebrew: lang === "he" },
   };
 }
+
+export type I18n = ReturnType<typeof makeI18n>;

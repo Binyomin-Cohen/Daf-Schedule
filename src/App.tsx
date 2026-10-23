@@ -1,13 +1,13 @@
 import { useAtom } from "jotai";
-import { useEffect, useMemo, useState } from "react";
-import { Calendar } from "./components/Calendar.jsx";
-import { DafPicker } from "./components/DafPicker.jsx";
-import { Settings } from "./components/Settings.jsx";
-import { AmudLinks } from "./components/AmudLinks.jsx";
-import { I18nProvider, useI18n } from "./i18n.jsx";
-import { AMUDIM, AMUD_TOTAL, TOTAL, findAmud, findDaf, masechtaByKey, resolvePlace } from "./data/shas.js";
-import { makeI18n } from "./lib/i18n.js";
-import { isStandardOrder, sanitizeOrder, studyIndex } from "./lib/order.js";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Calendar } from "./components/Calendar.tsx";
+import { DafPicker } from "./components/DafPicker.tsx";
+import { Settings } from "./components/Settings.tsx";
+import { AmudLinks } from "./components/AmudLinks.tsx";
+import { I18nProvider, useI18n } from "./i18n.tsx";
+import { AMUDIM, AMUD_TOTAL, TOTAL, findAmud, findDaf, isCompletePlace, masechtaByKey, resolvePlace, type Amud, type Daf, type Masechta, type Place } from "./data/shas.ts";
+import { makeI18n, type I18n } from "./lib/i18n.ts";
+import { isStandardOrder, sanitizeOrder, studyIndex } from "./lib/order.ts";
 import {
   WEEKDAYS,
   addDays,
@@ -21,12 +21,31 @@ import {
   groupAmudim,
   nextMasechtaOn,
   remainingDapim,
+  type Plan,
+  type Session,
   monthStart,
+  parseISODate,
+  positionOnDate,
   startOfDay,
   toISODate,
-} from "./lib/plan.js";
-import { officialOn } from "./lib/official.js";
-import { clampPace, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, settingsAtom } from "./state.js";
+} from "./lib/plan.ts";
+import { officialOn } from "./lib/official.ts";
+import { clampPace, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, settingsAtom, type CalendarView, type DoneToday, type Language } from "./state.ts";
+
+type DafYomiPayload = {
+  current_daf: { key: string; daf: number; masechta?: string };
+  cycle?: { number?: number; label?: string };
+};
+
+type OfficialState = { status: "loading" | "error" | "ready"; data: DafYomiPayload | null };
+type Notice = { text: string; undo?: boolean };
+type Undo = { place: Place | null; anchoredOn: string | null; doneToday: DoneToday | null };
+
+function isDafYomiPayload(value: unknown): value is DafYomiPayload {
+  if (!value || typeof value !== "object") return false;
+  const current = (value as { current_daf?: { key?: unknown; daf?: unknown } }).current_daf;
+  return typeof current?.key === "string" && typeof current.daf === "number";
+}
 
 const PACE_PRESETS = [0.5, 1, 2, 2.5, 3, 5, 7, 10];
 
@@ -47,16 +66,16 @@ function useToday() {
   return today;
 }
 
-function indicesFromDone(done) {
+function indicesFromDone(done: DoneToday): number[] {
   if (Array.isArray(done.units) && done.units.length) {
     return done.units
       .map((unit) => findAmud(unit.key, unit.daf, unit.amud)?.amudIndex)
-      .filter((index) => index !== undefined);
+      .filter((index): index is number => index !== undefined);
   }
   if (done.from?.amud !== "a" && done.from?.amud !== "b") return [];
   const start = findAmud(done.from.key, done.from.daf, done.from.amud);
   if (!start || !Number.isInteger(done.count)) return [];
-  const indices = [];
+  const indices: number[] = [];
   for (let offset = 0; offset < done.count; offset += 1) {
     const index = start.amudIndex + offset;
     if (index >= AMUD_TOTAL) break;
@@ -65,13 +84,13 @@ function indicesFromDone(done) {
   return indices;
 }
 
-function formatPercent(position, total) {
+function formatPercent(position: number, total: number): string {
   if (!total) return "0";
   const value = Math.round((position / total) * 1000) / 10;
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function gapLabel(apart, i18n) {
+function gapLabel(apart: number, i18n: I18n): string {
   if (apart === 0) return i18n.t("level");
   const amount = formatDafAmount(Math.abs(apart));
   const word = i18n.dafWord(Math.abs(apart));
@@ -80,9 +99,9 @@ function gapLabel(apart, i18n) {
 
 export default function App() {
   const [settings, setSettings] = useAtom(settingsAtom);
-  const [official, setOfficial] = useState({ status: "loading", data: null });
-  const [notice, setNotice] = useState(null);
-  const [undo, setUndo] = useState(null);
+  const [official, setOfficial] = useState<OfficialState>({ status: "loading", data: null });
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [undo, setUndo] = useState<Undo | null>(null);
   const today = useToday();
   const todayIso = toISODate(today);
   const [selected, setSelected] = useState(today);
@@ -93,6 +112,7 @@ export default function App() {
   const language = sanitizeLanguage(settings.language);
   const calendarView = sanitizeCalendarView(settings.calendarView);
   const customOrder = settings.customOrder === true;
+  const compact = settings.compact === true;
   const order = useMemo(
     () => sanitizeOrder(customOrder ? settings.masechtaOrder : null),
     [customOrder, settings.masechtaOrder],
@@ -100,16 +120,24 @@ export default function App() {
   const orderIsStandard = !customOrder || isStandardOrder(order);
   const { sequence, rank, lastRankByDaf } = useMemo(() => studyIndex(order), [order]);
   const i18n = useMemo(() => makeI18n(language), [language]);
-  const complete = Boolean(settings.place?.complete);
-  const active = resolvePlace(settings.place);
-  const position = complete ? sequence.length : (active ? (rank.get(active.amudIndex) ?? 0) : 0);
-  const placeKey = active?.key ?? "berachos";
-  const [viewKey, setViewKey] = useState(placeKey);
-  const [trackedKey, setTrackedKey] = useState(placeKey);
-  if (trackedKey !== placeKey) {
-    setTrackedKey(placeKey);
-    setViewKey(placeKey);
-  }
+  const storedComplete = settings.place != null && isCompletePlace(settings.place);
+  const anchorUnit = storedComplete ? null : resolvePlace(settings.place);
+  const anchorIndex = storedComplete ? sequence.length : (anchorUnit ? (rank.get(anchorUnit.amudIndex) ?? 0) : 0);
+  const storedAnchor = sanitizeAnchoredOn(settings.anchoredOn);
+  const anchoredOnIso = storedAnchor
+    ?? (settings.doneToday?.date === todayIso ? toISODate(addDays(today, 1)) : todayIso);
+  const anchoredOnDate = parseISODate(anchoredOnIso);
+  const startToday = useMemo(
+    () => positionOnDate({
+      position: anchorIndex,
+      pace,
+      studyDays,
+      anchoredOn: anchoredOnDate,
+      date: today,
+      sequence,
+    }),
+    [anchorIndex, pace, studyDays, anchoredOnIso, today, sequence],
+  );
 
   const doneRecord =
     settings.doneToday?.date === todayIso &&
@@ -118,6 +146,27 @@ export default function App() {
       ? settings.doneToday
       : null;
   const caughtUp = Boolean(doneRecord);
+  const anchorIsFuture = anchoredOnDate.getTime() > today.getTime();
+  const position = useMemo(() => {
+    if (anchorIsFuture || !caughtUp) return startToday;
+    return positionOnDate({
+      position: startToday,
+      pace,
+      studyDays,
+      anchoredOn: today,
+      date: addDays(today, 1),
+      sequence,
+    });
+  }, [anchorIsFuture, caughtUp, startToday, pace, studyDays, today, sequence]);
+  const complete = storedComplete || position >= sequence.length;
+  const active = position < sequence.length ? (AMUDIM[sequence[position] ?? -1] ?? null) : null;
+  const placeKey = active?.key ?? anchorUnit?.key ?? "berachos";
+  const [viewKey, setViewKey] = useState(placeKey);
+  const [trackedKey, setTrackedKey] = useState(placeKey);
+  if (trackedKey !== placeKey) {
+    setTrackedKey(placeKey);
+    setViewKey(placeKey);
+  }
 
   const plan = useMemo(
     () =>
@@ -125,16 +174,19 @@ export default function App() {
         position,
         pace,
         studyDays,
-        start: caughtUp ? addDays(today, 1) : today,
+        start: anchorIsFuture ? anchoredOnDate : (caughtUp ? addDays(today, 1) : today),
         sequence,
       }),
-    [position, pace, studyDays, today, caughtUp, sequence],
+    [position, pace, studyDays, today, caughtUp, anchorIsFuture, anchoredOnIso, sequence],
   );
   const calculated = useMemo(() => officialOn(today), [today]);
 
   if (!settings.place) {
-    const place = { key: calculated.entry.key, daf: calculated.entry.daf, amud: "a" };
-    setSettings((current) => (current.place ? current : { ...current, place }));
+    const place: Place = { key: calculated.entry.key, daf: calculated.entry.daf, amud: "a" };
+    setSettings((current) => (current.place ? current : { ...current, place, anchoredOn: todayIso }));
+  } else if (!sanitizeAnchoredOn(settings.anchoredOn)) {
+    const stamp = settings.doneToday?.date === todayIso ? toISODate(addDays(today, 1)) : todayIso;
+    setSettings((current) => (sanitizeAnchoredOn(current.anchoredOn) ? current : { ...current, anchoredOn: stamp }));
   }
 
   useEffect(() => {
@@ -148,8 +200,8 @@ export default function App() {
         try {
           const response = await fetch(url);
           if (!response.ok) continue;
-          const data = await response.json();
-          if (cancelled || !data?.current_daf?.key) continue;
+          const data: unknown = await response.json();
+          if (cancelled || !isDafYomiPayload(data)) continue;
           setOfficial({ status: "ready", data });
           return;
         } catch {
@@ -178,17 +230,22 @@ export default function App() {
   }, [notice]);
 
   useEffect(() => {
-    if (!settings.place || settings.place.complete) return;
+    if (!settings.place || isCompletePlace(settings.place)) return;
     if (resolvePlace(settings.place)) return;
     setSettings((current) => ({
       ...current,
       place: { key: "berachos", daf: 2, amud: "a" },
+      anchoredOn: todayIso,
       doneToday: null,
     }));
-  }, [settings.place, setSettings]);
+  }, [settings.place, setSettings, todayIso]);
 
   function remember() {
-    setUndo({ place: settings.place, doneToday: settings.doneToday ?? null });
+    setUndo({
+      place: settings.place,
+      anchoredOn: sanitizeAnchoredOn(settings.anchoredOn),
+      doneToday: settings.doneToday ?? null,
+    });
   }
 
   function jumpToToday() {
@@ -196,7 +253,7 @@ export default function App() {
     setMonth(monthStart(today));
   }
 
-  function choosePlace(unit) {
+  function choosePlace(unit: { key: string; daf: number; amud?: string }) {
     const amud = unit.amud === "b" ? "b" : "a";
     const resolved = findAmud(unit.key, unit.daf, amud);
     if (!resolved) return;
@@ -204,6 +261,7 @@ export default function App() {
     setSettings((current) => ({
       ...current,
       place: { key: resolved.key, daf: resolved.daf, amud: resolved.amud },
+      anchoredOn: todayIso,
       doneToday: null,
     }));
     const learnsToday = studyDays.includes(today.getDay());
@@ -219,20 +277,21 @@ export default function App() {
 
   function finishSession() {
     const session = plan.byDate.get(todayIso);
-    if (!session) return;
-    const first = AMUDIM[session.indices[0]];
-    const next = AMUDIM[session.indices[session.indices.length - 1] + 1] ?? null;
+    if (!session?.indices.length) return;
+    const first = AMUDIM[session.indices[0] ?? -1];
+    if (!first) return;
+    const next = AMUDIM[sequence[position + session.indices.length] ?? -1] ?? null;
     remember();
     setSettings((current) => ({
       ...current,
-      place: next ? { key: next.key, daf: next.daf, amud: next.amud } : { complete: true },
+      place: next ? current.place : { complete: true },
       doneToday: {
         date: todayIso,
         from: { key: first.key, daf: first.daf, amud: first.amud },
         count: session.indices.length,
-        units: session.indices.map((index) => {
+        units: session.indices.flatMap((index) => {
           const unit = AMUDIM[index];
-          return { key: unit.key, daf: unit.daf, amud: unit.amud };
+          return unit ? [{ key: unit.key, daf: unit.daf, amud: unit.amud }] : [];
         }),
       },
     }));
@@ -244,28 +303,40 @@ export default function App() {
   }
 
   function studyMore() {
+    const next = position < sequence.length ? AMUDIM[sequence[position] ?? -1] : null;
+    if (!next) return;
     remember();
-    setSettings((current) => ({ ...current, doneToday: null }));
+    setSettings((current) => ({
+      ...current,
+      place: { key: next.key, daf: next.daf, amud: next.amud },
+      anchoredOn: todayIso,
+      doneToday: null,
+    }));
     setNotice({ text: i18n.t("sessionBack"), undo: true });
   }
 
   function undoPlace() {
     if (!undo) return;
-    setSettings((current) => ({ ...current, place: undo.place, doneToday: undo.doneToday }));
+    setSettings((current) => ({
+      ...current,
+      place: undo.place,
+      anchoredOn: undo.anchoredOn,
+      doneToday: undo.doneToday,
+    }));
     setUndo(null);
     setNotice({ text: i18n.t("restored") });
     jumpToToday();
   }
 
-  function setPace(nextPace) {
+  function setPace(nextPace: number) {
     setSettings((current) => ({ ...current, pace: clampPace(nextPace) }));
   }
 
-  function setLanguage(next) {
+  function setLanguage(next: Language) {
     setSettings((current) => ({ ...current, language: sanitizeLanguage(next) }));
   }
 
-  function setCustomOrder(enabled) {
+  function setCustomOrder(enabled: boolean) {
     setSettings((current) => ({
       ...current,
       customOrder: enabled,
@@ -273,15 +344,19 @@ export default function App() {
     }));
   }
 
-  function setMasechtaOrder(next) {
+  function setMasechtaOrder(next: string[]) {
     setSettings((current) => ({ ...current, customOrder: true, masechtaOrder: sanitizeOrder(next) }));
   }
 
-  function setCalendarView(next) {
+  function setCalendarView(next: CalendarView) {
     setSettings((current) => ({ ...current, calendarView: sanitizeCalendarView(next) }));
   }
 
-  function toggleStudyDay(day) {
+  function setCompact(next: boolean) {
+    setSettings((current) => ({ ...current, compact: next }));
+  }
+
+  function toggleStudyDay(day: number) {
     if (studyDays.includes(day) && studyDays.length === 1) {
       setNotice({ text: i18n.t("keepOneDay") });
       return;
@@ -312,7 +387,9 @@ export default function App() {
   const finishedIndices = doneRecord ? indicesFromDone(doneRecord) : [];
   const nextSession = plan.sessions.find((session) => session.iso > todayIso) ?? null;
   const highlight = todaySession?.indices ?? nextSession?.indices ?? [];
-  const sessionDafIndices = highlight.map((index) => AMUDIM[index]?.index).filter((index) => index !== undefined);
+  const sessionDafIndices = highlight
+    .map((index) => AMUDIM[index]?.index)
+    .filter((index): index is number => index !== undefined);
   const boundary = complete ? null : nextMasechtaOn(plan, sequence, position);
   const apiDaf = official.data ? findDaf(official.data.current_daf.key, official.data.current_daf.daf) : null;
   const officialDaf = apiDaf ?? calculated.entry;
@@ -330,6 +407,7 @@ export default function App() {
   return (
     <I18nProvider i18n={i18n}>
     <div dir={i18n.dir} lang={i18n.lang} className="mx-auto min-h-dvh max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      {compact ? null : (
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div className="max-w-xl">
           <p className="text-xs font-medium tracking-[0.18em] text-wine uppercase">{i18n.t("personal")}</p>
@@ -346,8 +424,9 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
-      <div className="mt-8 grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
+      <div className={`${compact ? "" : "mt-8 "}grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]`}>
         <TodayCard
           complete={complete}
           caughtUp={caughtUp}
@@ -360,6 +439,7 @@ export default function App() {
           onStudyMore={studyMore}
           onStartOver={() => firstUnit && choosePlace(firstUnit)}
           startName={startName}
+          compact={compact}
         />
         <Controls
           pace={pace}
@@ -384,9 +464,11 @@ export default function App() {
           customOrder={customOrder}
           order={order}
           currentKey={active?.key ?? null}
+          compact={compact}
           onLanguage={setLanguage}
           onCustomOrder={setCustomOrder}
           onOrder={setMasechtaOrder}
+          onCompact={setCompact}
         />
       </div>
 
@@ -474,23 +556,41 @@ function TodayCard({
   onStudyMore,
   onStartOver,
   startName,
+  compact,
+}: {
+  complete: boolean;
+  caughtUp: boolean;
+  today: Date;
+  todaySession: Session | null;
+  finishedIndices: number[];
+  nextSession: Session | null;
+  onPlace: (unit: Amud) => void;
+  onFinish: () => void;
+  onStudyMore: () => void;
+  onStartOver: () => void;
+  startName: string;
+  compact: boolean;
 }) {
   const i18n = useI18n();
 
   if (complete) {
     const ending = caughtUp && finishedIndices.length ? i18n.t("endingWith", { range: formatIndices(finishedIndices, i18n.groupOptions) }) : "";
     return (
-      <section className="rise relative overflow-hidden rounded-3xl bg-wine px-5 py-6 text-paper shadow-[0_22px_50px_-28px_rgba(92,24,36,0.85)] sm:px-7 sm:py-7">
+      <section className={compact
+        ? "rise relative overflow-hidden rounded-2xl bg-wine px-4 py-3 text-paper shadow-[0_14px_36px_-28px_rgba(92,24,36,0.85)]"
+        : "rise relative overflow-hidden rounded-3xl bg-wine px-5 py-6 text-paper shadow-[0_22px_50px_-28px_rgba(92,24,36,0.85)] sm:px-7 sm:py-7"}>
         <div className="absolute inset-x-0 top-0 h-px bg-gold" />
         <p className="text-xs font-medium tracking-[0.16em] text-gold uppercase">{i18n.t("siyumHashas")}</p>
-        <h2 className="mt-3 font-hebrew text-5xl leading-none">{i18n.t("congrats")}</h2>
-        <p className="mt-4 max-w-md text-paper/85">
+        <h2 className={compact ? "mt-1 font-hebrew text-3xl leading-none" : "mt-3 font-hebrew text-5xl leading-none"}>{i18n.t("congrats")}</h2>
+        <p className={compact ? "mt-2 max-w-md text-sm text-paper/85" : "mt-4 max-w-md text-paper/85"}>
           {i18n.t("finishedAll", { count: TOTAL.toLocaleString(i18n.locale) })}
           {ending}
         </p>
         <button
           type="button"
-          className="mt-6 rounded-full bg-paper px-4 py-2 text-sm font-medium text-wine"
+          className={compact
+            ? "mt-3 rounded-full bg-paper px-3 py-1 text-sm font-medium text-wine"
+            : "mt-6 rounded-full bg-paper px-4 py-2 text-sm font-medium text-wine"}
           onClick={onStartOver}
         >
           {i18n.t("startAgain", { name: startName })}
@@ -501,14 +601,14 @@ function TodayCard({
 
   let indices = todaySession?.indices ?? [];
   let kicker = i18n.t("todayKicker", { date: formatWeekday(today, i18n.locale) });
-  let lede = null;
-  let action = null;
+  let lede: string | null = null;
+  let action: ReactNode = null;
 
   if (todaySession) {
     const amount = formatDafAmount(todaySession.spent / 2);
     const word = i18n.dafWord(todaySession.spent / 2);
     action = (
-      <button type="button" className="rounded-full bg-paper px-4 py-2 text-sm font-medium text-wine" onClick={onFinish}>
+      <button type="button" className={compact ? "rounded-full bg-paper px-3 py-1 text-sm font-medium text-wine" : "rounded-full bg-paper px-4 py-2 text-sm font-medium text-wine"} onClick={onFinish}>
         {i18n.t("finishButton", { amount, word })}
       </button>
     );
@@ -519,7 +619,7 @@ function TodayCard({
       ? i18n.t("finishedRange", { range: formatIndices(finishedIndices, i18n.groupOptions) })
       : i18n.t("alreadyLogged");
     action = (
-      <button type="button" className="rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-paper" onClick={onStudyMore}>
+      <button type="button" className={compact ? "rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-paper" : "rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-paper"} onClick={onStudyMore}>
         {i18n.t("studyMore")}
       </button>
     );
@@ -531,8 +631,8 @@ function TodayCard({
 
   const groups = groupAmudim(indices);
   const lead = groups[0];
-  const notes = [];
-  const seenNotes = new Set();
+  const notes: Amud[] = [];
+  const seenNotes = new Set<number>();
   for (const index of indices) {
     const unit = AMUDIM[index];
     if (unit?.note && !seenNotes.has(unit.index)) {
@@ -542,22 +642,27 @@ function TodayCard({
   }
 
   return (
-    <section className="rise relative overflow-hidden rounded-3xl bg-wine px-5 py-6 text-paper shadow-[0_22px_50px_-28px_rgba(92,24,36,0.85)] sm:px-7 sm:py-7">
+    <section className={compact
+      ? "rise relative overflow-hidden rounded-2xl bg-wine px-4 py-3 text-paper shadow-[0_14px_36px_-28px_rgba(92,24,36,0.85)]"
+      : "rise relative overflow-hidden rounded-3xl bg-wine px-5 py-6 text-paper shadow-[0_22px_50px_-28px_rgba(92,24,36,0.85)] sm:px-7 sm:py-7"}>
       <div className="absolute inset-x-0 top-0 h-px bg-gold" />
-      <p className="text-xs font-medium tracking-[0.16em] text-gold uppercase">{kicker}</p>
+      <div className={compact ? "flex flex-wrap items-center justify-between gap-x-3 gap-y-1" : ""}>
+        <p className="text-xs font-medium tracking-[0.16em] text-gold uppercase">{kicker}</p>
+        {compact ? action : null}
+      </div>
       {lead ? (
         <>
-          <h2 className="mt-3 font-hebrew text-5xl leading-none sm:text-6xl">{lead.hebrew}</h2>
-          <p className="mt-3 font-display text-3xl tracking-tight">
+          <h2 className={compact ? "mt-1 font-hebrew text-3xl leading-none" : "mt-3 font-hebrew text-5xl leading-none sm:text-6xl"}>{lead.hebrew}</h2>
+          <p className={compact ? "mt-1 font-display text-xl tracking-tight" : "mt-3 font-display text-3xl tracking-tight"}>
             {groups.map((group) => formatGroup(group, i18n.groupOptions)).join(" · ")}
           </p>
-          {lede ? <p className="mt-2 text-sm text-paper/80">{lede}</p> : null}
+          {lede ? <p className={compact ? "mt-1 text-sm text-paper/80" : "mt-2 text-sm text-paper/80"}>{lede}</p> : null}
         </>
       ) : (
-        <h2 className="mt-3 font-display text-3xl">{i18n.t("nothingLeft")}</h2>
+        <h2 className={compact ? "mt-1 font-display text-2xl" : "mt-3 font-display text-3xl"}>{i18n.t("nothingLeft")}</h2>
       )}
 
-      {indices.length ? (
+      {!compact && indices.length ? (
         <div className="mt-5 flex flex-wrap gap-2">
           {indices.map((index) => {
             const unit = AMUDIM[index];
@@ -578,7 +683,7 @@ function TodayCard({
       ) : null}
 
       {notes.length ? (
-        <ul className="mt-4 space-y-1 text-sm text-paper/80">
+        <ul className={compact ? "mt-2 space-y-1 text-sm text-paper/80" : "mt-4 space-y-1 text-sm text-paper/80"}>
           {notes.map((daf) => (
             <li key={daf.index}>
               {i18n.name(daf)} {daf.daf}: {i18n.note(daf)}
@@ -587,10 +692,12 @@ function TodayCard({
         </ul>
       ) : null}
 
+      {compact ? null : (
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {action}
         <p className="text-sm text-paper/75">{i18n.t("scanHint")}</p>
       </div>
+      )}
     </section>
   );
 }
@@ -609,6 +716,20 @@ function Controls({
   apart,
   onUseOfficial,
   sameAsOfficial,
+}: {
+  pace: number;
+  onPace: (pace: number) => void;
+  studyDays: number[];
+  onToggleDay: (day: number) => void;
+  plan: Plan;
+  boundary: ReturnType<typeof nextMasechtaOn>;
+  todayIso: string;
+  officialDaf: Daf;
+  cycleLabel: string;
+  listedMasechta: Masechta | null;
+  apart: number | null;
+  onUseOfficial: () => void;
+  sameAsOfficial: boolean;
 }) {
   const i18n = useI18n();
   let boundaryText = i18n.t("lastMasechta");

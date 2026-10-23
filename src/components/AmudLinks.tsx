@@ -1,7 +1,9 @@
-import { pdfUrl } from "../data/shas.js";
-import { useI18n } from "../i18n.jsx";
+import { pdfUrl, type AmudSide, type Daf } from "../data/shas.ts";
+import { useI18n } from "../i18n.tsx";
 
-export function AmudLink({ daf, amud, tone = "paper" }) {
+type PdfDaf = Pick<Daf, "pdfKey" | "daf" | "endAmud" | "name" | "hebrew">;
+
+export function AmudLink({ daf, amud, tone = "paper" }: { daf: PdfDaf; amud: AmudSide; tone?: "paper" | "wine" }) {
   const i18n = useI18n();
   const letter = amud === "a" ? "א" : "ב";
   const className =
@@ -22,8 +24,8 @@ export function AmudLink({ daf, amud, tone = "paper" }) {
   );
 }
 
-export function AmudLinks({ daf, amud, tone = "paper" }) {
-  const amudim = amud ? [amud] : daf.endAmud === "a" ? ["a"] : ["a", "b"];
+export function AmudLinks({ daf, amud, tone = "paper" }: { daf: PdfDaf; amud?: AmudSide; tone?: "paper" | "wine" }) {
+  const amudim: AmudSide[] = amud ? [amud] : daf.endAmud === "a" ? ["a"] : ["a", "b"];
   return (
     <span className="inline-flex gap-1">
       {amudim.map((amud) => (

@@ -1,13 +1,15 @@
-import { AMUDIM } from "../data/shas.js";
-import { useI18n } from "../i18n.jsx";
-import { addDays, formatGroup, formatIndices, formatLong, formatMonthName, formatWeekday, formatYear, groupAmudim, monthCells, toISODate } from "../lib/plan.js";
-import { AmudLinks } from "./AmudLinks.jsx";
+import type { ReactNode } from "react";
+import { AMUDIM, type Amud } from "../data/shas.ts";
+import { useI18n } from "../i18n.tsx";
+import { addDays, formatGroup, formatIndices, formatLong, formatMonthName, formatWeekday, formatYear, groupAmudim, monthCells, toISODate, type Plan, type Session } from "../lib/plan.ts";
+import type { CalendarView } from "../state.ts";
+import { AmudLinks } from "./AmudLinks.tsx";
 
-function cx(...parts) {
+function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-const VIEWS = ["month", "year", "list"];
+const VIEWS: CalendarView[] = ["month", "year", "list"];
 
 export function Calendar({
   plan,
@@ -21,6 +23,18 @@ export function Calendar({
   caughtUp,
   view,
   onView,
+}: {
+  plan: Plan;
+  today: Date;
+  month: Date;
+  onMonth: (month: Date) => void;
+  studyDays: number[];
+  onPlace: (unit: Amud) => void;
+  selected: Date;
+  onSelect: (date: Date) => void;
+  caughtUp: boolean;
+  view: CalendarView;
+  onView: (view: CalendarView) => void;
 }) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
@@ -37,12 +51,12 @@ export function Calendar({
     onSelect(today);
   }
 
-  function selectDate(date) {
+  function selectDate(date: Date) {
     onSelect(date);
     onMonth(new Date(date.getFullYear(), date.getMonth(), 1));
   }
 
-  function step(delta) {
+  function step(delta: number) {
     if (yearMode) onMonth(new Date(month.getFullYear() + delta, month.getMonth(), 1));
     else onMonth(new Date(month.getFullYear(), month.getMonth() + delta, 1));
   }
@@ -127,20 +141,38 @@ export function Calendar({
         <span>{i18n.t("legendOff")}</span>
       </div>
 
-      <DayDetail
-        selected={selected}
-        session={session}
-        selectedPast={selectedPast}
-        todayIso={todayIso}
-        caughtUp={caughtUp}
-        studyDays={studyDays}
-        onPlace={onPlace}
-      />
+      {selectedIso === todayIso ? null : (
+        <DayDetail
+          selected={selected}
+          session={session}
+          selectedPast={selectedPast}
+          todayIso={todayIso}
+          caughtUp={caughtUp}
+          studyDays={studyDays}
+          onPlace={onPlace}
+        />
+      )}
     </section>
   );
 }
 
-function MonthGrid({ month, plan, todayIso, selectedIso, studyDays, caughtUp, onSelect }) {
+function MonthGrid({
+  month,
+  plan,
+  todayIso,
+  selectedIso,
+  studyDays,
+  caughtUp,
+  onSelect,
+}: {
+  month: Date;
+  plan: Plan;
+  todayIso: string;
+  selectedIso: string;
+  studyDays: number[];
+  caughtUp: boolean;
+  onSelect: (date: Date) => void;
+}) {
   const i18n = useI18n();
   const cells = monthCells(month.getFullYear(), month.getMonth());
 
@@ -216,7 +248,21 @@ function MonthGrid({ month, plan, todayIso, selectedIso, studyDays, caughtUp, on
   );
 }
 
-function YearGrid({ year, plan, todayIso, selectedIso, studyDays, onSelect }) {
+function YearGrid({
+  year,
+  plan,
+  todayIso,
+  selectedIso,
+  studyDays,
+  onSelect,
+}: {
+  year: number;
+  plan: Plan;
+  todayIso: string;
+  selectedIso: string;
+  studyDays: number[];
+  onSelect: (date: Date) => void;
+}) {
   const i18n = useI18n();
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 xl:grid-cols-4">
@@ -274,12 +320,26 @@ function YearGrid({ year, plan, todayIso, selectedIso, studyDays, onSelect }) {
   );
 }
 
-function ListView({ year, plan, today, selectedIso, caughtUp, onSelect }) {
+function ListView({
+  year,
+  plan,
+  today,
+  selectedIso,
+  caughtUp,
+  onSelect,
+}: {
+  year: number;
+  plan: Plan;
+  today: Date;
+  selectedIso: string;
+  caughtUp: boolean;
+  onSelect: (date: Date) => void;
+}) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
   const start = year === today.getFullYear() && today > new Date(year, 0, 1) ? today : new Date(year, 0, 1);
   const end = new Date(year, 11, 31);
-  const groups = [];
+  const groups: Array<{ key: string; label: string; rows: Array<{ date: Date; iso: string; session: Session | null }> }> = [];
   for (let cursor = startOf(start); cursor <= end; cursor = addDays(cursor, 1)) {
     const iso = toISODate(cursor);
     const session = plan.byDate.get(iso) ?? null;
@@ -342,24 +402,40 @@ function ListView({ year, plan, today, selectedIso, caughtUp, onSelect }) {
   );
 }
 
-function startOf(date) {
+function startOf(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function DayDetail({ selected, session, selectedPast, caughtUp, todayIso, studyDays, onPlace }) {
+function DayDetail({
+  selected,
+  session,
+  selectedPast,
+  caughtUp,
+  todayIso,
+  studyDays,
+  onPlace,
+}: {
+  selected: Date;
+  session: Session | null;
+  selectedPast: boolean;
+  caughtUp: boolean;
+  todayIso: string;
+  studyDays: number[];
+  onPlace: (unit: Amud) => void;
+}) {
   const i18n = useI18n();
   const iso = toISODate(selected);
   const isToday = iso === todayIso;
 
   let heading = formatLong(selected, i18n.locale);
-  let body = null;
+  let body: ReactNode = null;
 
   if (selectedPast) {
     body = <p className="text-sm text-ink-soft">{i18n.t("pastDay")}</p>;
   } else if (session) {
     heading = formatLong(selected, i18n.locale);
-    const noted = [];
-    const seen = new Set();
+    const noted: Amud[] = [];
+    const seen = new Set<number>();
     for (const index of session.indices) {
       const unit = AMUDIM[index];
       if (unit?.note && !seen.has(unit.index)) {

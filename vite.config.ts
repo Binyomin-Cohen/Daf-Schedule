@@ -6,7 +6,7 @@ const dafYomiProxy = {
   "/api/daf-yomi": {
     target: "https://www.shas.org",
     changeOrigin: true,
-    rewrite: (path) => path.replace(/^\/api\/daf-yomi/, "/daf-yomi-api/"),
+    rewrite: (path: string) => path.replace(/^\/api\/daf-yomi/, "/daf-yomi-api/"),
   },
 };
 

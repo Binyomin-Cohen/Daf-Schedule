@@ -17,9 +17,55 @@ export const SEDERS = [
   { id: "Taharos", hebrew: "טהרות", color: "#56486e" },
 ];
 
-const SEDER_COLOR = Object.fromEntries(SEDERS.map((seder) => [seder.id, seder.color]));
+export type AmudSide = "a" | "b";
 
-const NOTES = {
+export type Note = { en: string; he: string };
+
+export type Daf = {
+  index: number;
+  key: string;
+  pdfKey: string;
+  name: string;
+  shortName: string;
+  hebrew: string;
+  seder: string;
+  color: string;
+  daf: number;
+  endAmud: AmudSide;
+  note: Note | null;
+};
+
+export type Amud = Daf & { amud: AmudSide; amudIndex: number };
+
+type MasechtaDef = {
+  key: string;
+  name: string;
+  shortName: string;
+  hebrew: string;
+  seder: string;
+  end: number;
+  endAmud: AmudSide;
+  start?: number;
+  pdfKey?: string;
+};
+
+export type Masechta = MasechtaDef & {
+  start: number;
+  color: string;
+  firstIndex: number;
+  count: number;
+};
+
+export type StudyPlace = { key: string; daf: number; amud?: AmudSide };
+export type Place = StudyPlace | { complete: true };
+
+export function isCompletePlace(place: Place | null | undefined): place is { complete: true } {
+  return !!place && "complete" in place && place.complete === true;
+}
+
+const SEDER_COLOR: Record<string, string> = Object.fromEntries(SEDERS.map((seder) => [seder.id, seder.color]));
+
+const NOTES: Record<string, Note> = {
   "meilah:22": {
     en: "22a finishes Me'ilah. 22b is the opening of Kinim.",
     he: "כב ע״א מסיים את מעילה. כב ע״ב הוא תחילת קינים.",
@@ -30,8 +76,7 @@ const NOTES = {
   },
 };
 
-/** @type {Array<{key: string, name: string, shortName: string, hebrew: string, seder: string, end: number, endAmud: "a" | "b", start?: number, pdfKey?: string}>} */
-const MASECHTA_DEFS = [
+const MASECHTA_DEFS: MasechtaDef[] = [
   { key: "berachos", name: "Berachos", shortName: "Berachos", hebrew: "ברכות", seder: "Zeraim", end: 64, endAmud: "a" },
   { key: "shabbos", name: "Shabbos", shortName: "Shabbos", hebrew: "שבת", seder: "Moed", end: 157, endAmud: "b" },
   { key: "eruvin", name: "Eruvin", shortName: "Eruvin", hebrew: "עירובין", seder: "Moed", end: 105, endAmud: "a" },
@@ -74,14 +119,14 @@ const MASECHTA_DEFS = [
   { key: "niddah", name: "Niddah", shortName: "Niddah", hebrew: "נדה", seder: "Taharos", end: 73, endAmud: "a" },
 ];
 
-function buildShas() {
-  const dapim = [];
-  const lookup = new Map();
+function buildShas(): { dapim: Daf[]; masechtos: Masechta[]; lookup: Map<string, Map<number, Daf>> } {
+  const dapim: Daf[] = [];
+  const lookup = new Map<string, Map<number, Daf>>();
 
   const masechtos = MASECHTA_DEFS.map((def) => {
     const start = def.start ?? 2;
     const firstIndex = dapim.length;
-    const byDaf = new Map();
+    const byDaf = new Map<number, Daf>();
 
     for (let daf = start; daf <= def.end; daf += 1) {
       const entry = {
@@ -92,7 +137,7 @@ function buildShas() {
         shortName: def.shortName,
         hebrew: def.hebrew,
         seder: def.seder,
-        color: SEDER_COLOR[def.seder],
+        color: SEDER_COLOR[def.seder] ?? "#1c1612",
         daf,
         endAmud: daf === def.end ? def.endAmud : "b",
         note: NOTES[`${def.key}:${daf}`] ?? null,
@@ -105,7 +150,7 @@ function buildShas() {
     return {
       ...def,
       start,
-      color: SEDER_COLOR[def.seder],
+      color: SEDER_COLOR[def.seder] ?? "#1c1612",
       firstIndex,
       count: def.end - start + 1,
     };
@@ -122,7 +167,7 @@ export const TOTAL = DAPIM.length;
 
 const VOLUME_KEYS = ["meilah", "kinim", "tamid", "middos"];
 
-export function findDaf(key, dafNumber) {
+export function findDaf(key: string, dafNumber: number): Daf | null {
   const direct = built.lookup.get(key)?.get(dafNumber);
   if (direct) return direct;
   if (key === "meilah") {
@@ -134,18 +179,18 @@ export function findDaf(key, dafNumber) {
   return null;
 }
 
-export function masechtaByKey(key) {
+export function masechtaByKey(key: string): Masechta | null {
   return MASECHTOS.find((masechta) => masechta.key === key) ?? null;
 }
 
-export const AMUDIM = DAPIM.flatMap((daf) => {
-  const sides = daf.endAmud === "a" ? ["a"] : ["a", "b"];
+export const AMUDIM: Amud[] = DAPIM.flatMap((daf) => {
+  const sides: AmudSide[] = daf.endAmud === "a" ? ["a"] : ["a", "b"];
   return sides.map((amud) => ({ ...daf, amud }));
 }).map((entry, amudIndex) => ({ ...entry, amudIndex }));
 
 export const AMUD_TOTAL = AMUDIM.length;
 
-export function pdfUrl(daf, amud = "a") {
+export function pdfUrl(daf: Pick<Daf, "pdfKey" | "daf">, amud: AmudSide = "a"): string {
   const params = new URLSearchParams({
     masechta: daf.pdfKey,
     daf: String(daf.daf),
@@ -154,19 +199,19 @@ export function pdfUrl(daf, amud = "a") {
   return `https://www.shas.org/daf-pdf/api/?${params.toString()}`;
 }
 
-export function findAmud(key, dafNumber, amud = "a") {
+export function findAmud(key: string, dafNumber: number, amud: AmudSide = "a"): Amud | null {
   const daf = findDaf(key, dafNumber);
   if (!daf) return null;
   const side = amud === "b" && daf.endAmud !== "a" ? "b" : "a";
   return AMUDIM.find((entry) => entry.index === daf.index && entry.amud === side) ?? null;
 }
 
-export function resolvePlace(place) {
-  if (!place || place.complete) return null;
-  return findAmud(place.key, place.daf, place.amud || "a");
+export function resolvePlace(place: Place | null): Amud | null {
+  if (!place || isCompletePlace(place)) return null;
+  return findAmud(place.key, place.daf, place.amud ?? "a");
 }
 
-export function isLastAmud(amudIndex) {
+export function isLastAmud(amudIndex: number): boolean {
   const current = AMUDIM[amudIndex];
   const next = AMUDIM[amudIndex + 1];
   return Boolean(current) && (!next || next.key !== current.key);
