@@ -219,7 +219,7 @@ export function positionOnDate({
   const from = startOfDay(anchoredOn);
   const until = startOfDay(date);
   if (until.getTime() <= from.getTime()) return position;
-  const plan = buildPlan({ position, pace, studyDays, start: from, sequence });
+  const plan = buildPlan({ position, pace, studyDays, start: from, sequence, until });
   const untilIso = toISODate(until);
   let cursor = position;
   for (const session of plan.sessions) {
@@ -227,6 +227,31 @@ export function positionOnDate({
     cursor += session.indices.length;
   }
   return cursor;
+}
+
+/** The pages assigned to `date`, from the anchor. Empty when that day is off or before the anchor. */
+export function sessionOnDate({
+  position,
+  pace,
+  studyDays,
+  anchoredOn,
+  date,
+  sequence,
+}: {
+  position: number;
+  pace: number;
+  studyDays: number[];
+  anchoredOn: Date;
+  date: Date;
+  sequence?: number[];
+}): Session | null {
+  const from = startOfDay(anchoredOn);
+  const day = startOfDay(date);
+  if (day.getTime() < from.getTime()) return null;
+  const atDay = positionOnDate({ position, pace, studyDays, anchoredOn: from, date: day, sequence });
+  const plan = buildPlan({ position: atDay, pace, studyDays, start: day, sequence, limit: 1 });
+  const session = plan.byDate.get(toISODate(day));
+  return session && session.indices.length ? session : null;
 }
 
 /**
@@ -240,12 +265,18 @@ export function buildPlan({
   studyDays,
   start,
   sequence,
+  until,
+  limit,
 }: {
   position: number;
   pace: number;
   studyDays: number[];
   start: Date;
   sequence?: number[];
+  /** Stop before this day. */
+  until?: Date;
+  /** Stop after this many study sessions. */
+  limit?: number;
 }): Plan {
   const order = sequence ?? AMUDIM.map((unit) => unit.amudIndex);
   const allowed = new Set(studyDays);
@@ -255,9 +286,11 @@ export function buildPlan({
   const lastInOrder = order[order.length - 1];
   let cursor = position;
   let date = startOfDay(start);
+  const untilTime = until ? startOfDay(until).getTime() : null;
   let guard = 0;
 
   while (cursor < order.length && guard < 80000) {
+    if (untilTime !== null && date.getTime() >= untilTime) break;
     if (allowed.has(date.getDay())) {
       const indices: number[] = [];
       let spent = 0;
@@ -283,6 +316,7 @@ export function buildPlan({
       };
       byDate.set(iso, session);
       sessions.push(session);
+      if (limit !== undefined && sessions.length >= limit) break;
     }
     date = addDays(date, 1);
     guard += 1;

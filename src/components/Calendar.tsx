@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { AMUDIM, type Amud } from "../data/shas.ts";
 import { useI18n } from "../i18n.tsx";
-import { addDays, formatGroup, formatIndices, formatLong, formatMonthName, formatWeekday, formatYear, groupAmudim, monthCells, toISODate, type Plan, type Session } from "../lib/plan.ts";
+import { addHebrewMonths, addHebrewYears, formatScheduleDay, formatScheduleLong, formatScheduleMonth, formatScheduleMonthName, formatScheduleWhen, formatScheduleYear, hebrewMonthCells, hebrewMonthStart, hebrewMonths, hebrewYearNumber, tishreiOf, type DateStyle } from "../lib/dates.ts";
+import { addDays, formatGroup, formatIndices, groupAmudim, monthCells, toISODate, type Plan, type Session } from "../lib/plan.ts";
 import type { CalendarView } from "../state.ts";
 import { AmudLinks } from "./AmudLinks.tsx";
 
@@ -23,6 +24,11 @@ export function Calendar({
   caughtUp,
   view,
   onView,
+  dates,
+  missedDates,
+  historySession,
+  onMiss,
+  onMadeUp,
 }: {
   plan: Plan;
   today: Date;
@@ -35,6 +41,11 @@ export function Calendar({
   caughtUp: boolean;
   view: CalendarView;
   onView: (view: CalendarView) => void;
+  dates: DateStyle;
+  missedDates: ReadonlySet<string>;
+  historySession: Session | null;
+  onMiss: (date: Date) => void;
+  onMadeUp: (date: Date) => void;
 }) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
@@ -42,22 +53,26 @@ export function Calendar({
   const session = plan.byDate.get(selectedIso) ?? null;
   const selectedPast = selectedIso < todayIso;
   const yearMode = view === "year" || view === "list";
-  const heading = yearMode
-    ? formatYear(month, i18n.locale)
-    : month.toLocaleDateString(i18n.locale, { month: "long", year: "numeric" });
+  const heading = yearMode ? formatScheduleYear(month, dates) : formatScheduleMonth(month, dates);
+
+  function focusMonth(date: Date) {
+    onMonth(dates.jewish ? hebrewMonthStart(date) : new Date(date.getFullYear(), date.getMonth(), 1));
+  }
 
   function showToday() {
-    onMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    focusMonth(today);
     onSelect(today);
   }
 
   function selectDate(date: Date) {
     onSelect(date);
-    onMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    focusMonth(date);
   }
 
   function step(delta: number) {
-    if (yearMode) onMonth(new Date(month.getFullYear() + delta, month.getMonth(), 1));
+    if (dates.jewish && yearMode) onMonth(addHebrewYears(month, delta));
+    else if (dates.jewish) onMonth(addHebrewMonths(month, delta));
+    else if (yearMode) onMonth(new Date(month.getFullYear() + delta, month.getMonth(), 1));
     else onMonth(new Date(month.getFullYear(), month.getMonth() + delta, 1));
   }
 
@@ -69,7 +84,7 @@ export function Calendar({
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-medium tracking-[0.16em] text-ink-soft uppercase">{i18n.t("calendar")}</p>
-          <h2 className="font-display text-3xl tracking-tight sm:text-4xl">{heading}</h2>
+          <h2 className={cx("font-display text-3xl tracking-tight sm:text-4xl", dates.lang === "he" && dates.jewish && "font-hebrew")}>{heading}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-full bg-parchment p-1" role="group" aria-label={i18n.t("calendarView")}>
@@ -114,19 +129,21 @@ export function Calendar({
       </div>
 
       {view === "year" ? (
-        <YearGrid year={month.getFullYear()} plan={plan} todayIso={todayIso} selectedIso={selectedIso} studyDays={studyDays} onSelect={selectDate} />
+        <YearGrid anchor={month} dates={dates} plan={plan} todayIso={todayIso} selectedIso={selectedIso} studyDays={studyDays} missedDates={missedDates} onSelect={selectDate} />
       ) : null}
       {view === "list" ? (
-        <ListView year={month.getFullYear()} plan={plan} today={today} selectedIso={selectedIso} caughtUp={caughtUp} onSelect={selectDate} />
+        <ListView anchor={month} dates={dates} plan={plan} today={today} selectedIso={selectedIso} caughtUp={caughtUp} missedDates={missedDates} onSelect={selectDate} />
       ) : null}
       {view === "month" ? (
         <MonthGrid
           month={month}
+          dates={dates}
           plan={plan}
           todayIso={todayIso}
           selectedIso={selectedIso}
           studyDays={studyDays}
           caughtUp={caughtUp}
+          missedDates={missedDates}
           onSelect={selectDate}
         />
       ) : null}
@@ -138,18 +155,25 @@ export function Calendar({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-gold" /> {i18n.t("siyum")}
         </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-moss" /> {i18n.t("legendMakeup")}
+        </span>
         <span>{i18n.t("legendOff")}</span>
       </div>
 
       {selectedIso === todayIso ? null : (
         <DayDetail
           selected={selected}
-          session={session}
+          session={selectedPast ? historySession : session}
           selectedPast={selectedPast}
           todayIso={todayIso}
           caughtUp={caughtUp}
           studyDays={studyDays}
+          dates={dates}
+          missed={missedDates.has(selectedIso)}
           onPlace={onPlace}
+          onMiss={() => onMiss(selected)}
+          onMadeUp={() => onMadeUp(selected)}
         />
       )}
     </section>
@@ -158,23 +182,27 @@ export function Calendar({
 
 function MonthGrid({
   month,
+  dates,
   plan,
   todayIso,
   selectedIso,
   studyDays,
   caughtUp,
+  missedDates,
   onSelect,
 }: {
   month: Date;
+  dates: DateStyle;
   plan: Plan;
   todayIso: string;
   selectedIso: string;
   studyDays: number[];
   caughtUp: boolean;
+  missedDates: ReadonlySet<string>;
   onSelect: (date: Date) => void;
 }) {
   const i18n = useI18n();
-  const cells = monthCells(month.getFullYear(), month.getMonth());
+  const cells = dates.jewish ? hebrewMonthCells(month) : monthCells(month.getFullYear(), month.getMonth());
 
   return (
     <div className="grid grid-cols-7">
@@ -191,17 +219,18 @@ function MonthGrid({
         const isSelected = iso === selectedIso;
         const isPast = iso < todayIso;
         const isOff = !isPast && !isToday && !studyDays.includes(date.getDay());
+        const missed = missedDates.has(iso);
         const groups = daySession ? groupAmudim(daySession.indices) : [];
         const label = daySession
-          ? `${formatLong(date, i18n.locale)}, ${groups.map((group) => formatGroup(group, { ...i18n.groupOptions, short: true })).join(", ")}`
-          : formatLong(date, i18n.locale);
+          ? `${formatScheduleLong(date, dates)}, ${groups.map((group) => formatGroup(group, { ...i18n.groupOptions, short: true })).join(", ")}`
+          : formatScheduleLong(date, dates);
 
         return (
           <button
             key={iso}
             type="button"
             aria-pressed={isSelected}
-            aria-label={label}
+            aria-label={missed ? `${label}, ${i18n.t("makeup")}` : label}
             onClick={() => onSelect(date)}
             className={cx(
               "flex min-h-14 flex-col items-start gap-1 border-t border-line px-1.5 py-1.5 text-start transition sm:min-h-28 sm:px-2 sm:py-2",
@@ -213,12 +242,15 @@ function MonthGrid({
           >
             <span
               className={cx(
-                "text-xs font-medium tabular-nums sm:text-sm",
+                "text-xs font-medium sm:text-sm",
+                dates.jewish ? "" : "tabular-nums",
+                dates.lang === "he" && dates.jewish && "font-hebrew",
                 isPast ? "text-ink-soft/70" : "text-ink",
                 isToday && "text-wine",
               )}
             >
-              {date.getDate()}
+              <span className={dates.lang === "he" && dates.jewish ? "font-hebrew" : undefined}>{formatScheduleDay(date, dates)}</span>
+              {missed ? <span className="ms-1 inline-block h-1.5 w-1.5 rounded-full bg-moss" /> : null}
               {isToday ? <span className="ms-1 hidden text-[10px] tracking-wide uppercase sm:inline">{i18n.t("today")}</span> : null}
             </span>
             {daySession ? (
@@ -249,56 +281,66 @@ function MonthGrid({
 }
 
 function YearGrid({
-  year,
+  anchor,
+  dates,
   plan,
   todayIso,
   selectedIso,
   studyDays,
+  missedDates,
   onSelect,
 }: {
-  year: number;
+  anchor: Date;
+  dates: DateStyle;
   plan: Plan;
   todayIso: string;
   selectedIso: string;
   studyDays: number[];
+  missedDates: ReadonlySet<string>;
   onSelect: (date: Date) => void;
 }) {
   const i18n = useI18n();
+  const months = dates.jewish
+    ? hebrewMonths(hebrewYearNumber(anchor))
+    : Array.from({ length: 12 }, (_, monthIndex) => new Date(anchor.getFullYear(), monthIndex, 1));
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 xl:grid-cols-4">
-      {Array.from({ length: 12 }, (_, monthIndex) => {
-        const cells = monthCells(year, monthIndex);
-        const label = formatMonthName(new Date(year, monthIndex, 1), i18n.locale);
+      {months.map((monthStartDate) => {
+        const cells = dates.jewish ? hebrewMonthCells(monthStartDate) : monthCells(monthStartDate.getFullYear(), monthStartDate.getMonth());
+        const label = formatScheduleMonthName(monthStartDate, dates);
         return (
-          <div key={monthIndex}>
-            <h3 className="mb-1 text-sm font-medium">{label}</h3>
+          <div key={toISODate(monthStartDate)}>
+            <h3 className={cx("mb-1 text-sm font-medium", dates.lang === "he" && dates.jewish && "font-hebrew")}>{label}</h3>
             <div className="grid grid-cols-7 gap-px">
               {i18n.weekdays.map((day) => (
-                <div key={`${monthIndex}-${day}`} className="pb-0.5 text-center text-[9px] text-ink-soft">
+                <div key={`${toISODate(monthStartDate)}-${day}`} className="pb-0.5 text-center text-[9px] text-ink-soft">
                   {day.replace("׳", "").slice(0, 1)}
                 </div>
               ))}
               {cells.map((date, index) => {
-                if (!date) return <div key={`empty-${monthIndex}-${index}`} />;
+                if (!date) return <div key={`empty-${toISODate(monthStartDate)}-${index}`} />;
                 const iso = toISODate(date);
                 const daySession = plan.byDate.get(iso) ?? null;
                 const isToday = iso === todayIso;
                 const isSelected = iso === selectedIso;
                 const isPast = iso < todayIso;
                 const isOff = !isPast && !isToday && !studyDays.includes(date.getDay());
+                const missed = missedDates.has(iso);
                 const groups = daySession ? groupAmudim(daySession.indices) : [];
                 const labelText = daySession
-                  ? `${formatLong(date, i18n.locale)}, ${formatIndices(daySession.indices, i18n.groupOptions)}`
-                  : formatLong(date, i18n.locale);
+                  ? `${formatScheduleLong(date, dates)}, ${formatIndices(daySession.indices, i18n.groupOptions)}`
+                  : formatScheduleLong(date, dates);
                 return (
                   <button
                     key={iso}
                     type="button"
                     aria-pressed={isSelected}
-                    aria-label={labelText}
+                    aria-label={missed ? `${labelText}, ${i18n.t("makeup")}` : labelText}
                     onClick={() => onSelect(date)}
                     className={cx(
-                      "relative aspect-square rounded-sm text-[10px] tabular-nums leading-none",
+                      "relative aspect-square rounded-sm text-[10px] leading-none",
+                      dates.jewish ? "" : "tabular-nums",
+                      dates.lang === "he" && dates.jewish && "font-hebrew",
                       isToday && "bg-[#f8e7e4] text-wine",
                       isSelected && "ring-2 ring-wine ring-inset",
                       !isSelected && "hover:bg-parchment",
@@ -307,8 +349,9 @@ function YearGrid({
                     )}
                     style={daySession && !isToday ? { background: `${groups[0]?.color ?? "#7d2432"}22` } : undefined}
                   >
-                    {date.getDate()}
+                    {formatScheduleDay(date, dates)}
                     {daySession?.siyum ? <span className="absolute end-0.5 top-0.5 h-1 w-1 rounded-full bg-gold" /> : null}
+                    {missed ? <span className="absolute start-0.5 bottom-0.5 h-1 w-1 rounded-full bg-moss" /> : null}
                   </button>
                 );
               })}
@@ -321,34 +364,39 @@ function YearGrid({
 }
 
 function ListView({
-  year,
+  anchor,
+  dates,
   plan,
   today,
   selectedIso,
   caughtUp,
+  missedDates,
   onSelect,
 }: {
-  year: number;
+  anchor: Date;
+  dates: DateStyle;
   plan: Plan;
   today: Date;
   selectedIso: string;
   caughtUp: boolean;
+  missedDates: ReadonlySet<string>;
   onSelect: (date: Date) => void;
 }) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
-  const start = year === today.getFullYear() && today > new Date(year, 0, 1) ? today : new Date(year, 0, 1);
-  const end = new Date(year, 11, 31);
+  const yearStart = dates.jewish ? tishreiOf(hebrewYearNumber(anchor)) : new Date(anchor.getFullYear(), 0, 1);
+  const yearEnd = dates.jewish ? addDays(tishreiOf(hebrewYearNumber(anchor) + 1), -1) : new Date(anchor.getFullYear(), 11, 31);
+  const start = today >= yearStart && today <= yearEnd ? today : yearStart;
   const groups: Array<{ key: string; label: string; rows: Array<{ date: Date; iso: string; session: Session | null }> }> = [];
-  for (let cursor = startOf(start); cursor <= end; cursor = addDays(cursor, 1)) {
+  for (let cursor = startOf(start); cursor <= yearEnd; cursor = addDays(cursor, 1)) {
     const iso = toISODate(cursor);
     const session = plan.byDate.get(iso) ?? null;
     const doneRow = !session && iso === todayIso && caughtUp;
     if (!session && !doneRow) continue;
-    const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
+    const key = dates.jewish ? formatScheduleMonth(cursor, dates) : `${cursor.getFullYear()}-${cursor.getMonth()}`;
     let bucket = groups[groups.length - 1];
     if (!bucket || bucket.key !== key) {
-      bucket = { key, label: formatMonthName(cursor, i18n.locale), rows: [] };
+      bucket = { key, label: formatScheduleMonthName(cursor, dates), rows: [] };
       groups.push(bucket);
     }
     bucket.rows.push({ date: cursor, iso, session });
@@ -382,11 +430,14 @@ function ListView({
                     !selected && "hover:bg-parchment/70",
                   )}
                 >
-                  <span className={cx("w-8 shrink-0 tabular-nums", isToday ? "font-medium text-wine" : "text-ink")}>
-                    {row.date.getDate()}
+                  <span className={cx("w-8 shrink-0", dates.jewish ? "" : "tabular-nums", dates.lang === "he" && dates.jewish && "font-hebrew", isToday ? "font-medium text-wine" : "text-ink")}>
+                    {formatScheduleDay(row.date, dates)}
                   </span>
                   <span className="w-10 shrink-0 text-xs text-ink-soft">{i18n.weekdays[row.date.getDay()]}</span>
                   <span className="min-w-0 flex-1 truncate">{range}</span>
+                  {missedDates.has(row.iso) ? (
+                    <span className="shrink-0 text-[10px] font-medium tracking-wide text-moss uppercase">{i18n.t("makeup")}</span>
+                  ) : null}
                   {row.session?.siyum ? (
                     <span className="shrink-0 text-[10px] font-medium tracking-wide text-gold uppercase">
                       {row.session.siyumHashas ? i18n.t("hashas") : i18n.t("siyum")}
@@ -413,7 +464,11 @@ function DayDetail({
   caughtUp,
   todayIso,
   studyDays,
+  dates,
+  missed,
   onPlace,
+  onMiss,
+  onMadeUp,
 }: {
   selected: Date;
   session: Session | null;
@@ -421,19 +476,39 @@ function DayDetail({
   caughtUp: boolean;
   todayIso: string;
   studyDays: number[];
+  dates: DateStyle;
+  missed: boolean;
   onPlace: (unit: Amud) => void;
+  onMiss: () => void;
+  onMadeUp: () => void;
 }) {
   const i18n = useI18n();
   const iso = toISODate(selected);
   const isToday = iso === todayIso;
 
-  let heading = formatLong(selected, i18n.locale);
+  let heading = formatScheduleLong(selected, dates);
   let body: ReactNode = null;
 
-  if (selectedPast) {
-    body = <p className="text-sm text-ink-soft">{i18n.t("pastDay")}</p>;
+  if (selectedPast && !studyDays.includes(selected.getDay())) {
+    body = <p className="text-sm text-ink-soft">{i18n.t("dayOff", { day: formatScheduleWhen(selected, dates) })}</p>;
+  } else if (selectedPast && !session) {
+    body = <p className="text-sm text-ink-soft">{i18n.t("nothingToMiss")}</p>;
+  } else if (selectedPast && session) {
+    body = (
+      <div>
+        <p className="font-display text-2xl tracking-tight">{formatIndices(session.indices, i18n.groupOptions)}</p>
+        <p className="mt-1 text-sm text-ink-soft">{missed ? i18n.t("onMakeup") : i18n.t("countedDone")}</p>
+        <button
+          type="button"
+          className="mt-3 rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-paper"
+          onClick={missed ? onMadeUp : onMiss}
+        >
+          {i18n.t(missed ? "madeUp" : "missedThis")}
+        </button>
+      </div>
+    );
   } else if (session) {
-    heading = formatLong(selected, i18n.locale);
+    heading = formatScheduleLong(selected, dates);
     const noted: Amud[] = [];
     const seen = new Set<number>();
     for (const index of session.indices) {
@@ -480,7 +555,7 @@ function DayDetail({
   } else if (isToday && caughtUp) {
     body = <p className="text-sm text-ink-soft">{i18n.t("loggedToday")}</p>;
   } else if (!studyDays.includes(selected.getDay())) {
-    body = <p className="text-sm text-ink-soft">{i18n.t("dayOff", { day: formatWeekday(selected, i18n.locale) })}</p>;
+    body = <p className="text-sm text-ink-soft">{i18n.t("dayOff", { day: formatScheduleWhen(selected, dates) })}</p>;
   } else {
     body = <p className="text-sm text-ink-soft">{i18n.t("nothingScheduled")}</p>;
   }

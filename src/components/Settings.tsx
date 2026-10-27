@@ -23,20 +23,24 @@ export function Settings({
   order,
   currentKey,
   compact,
+  jewishDates,
   onLanguage,
   onCustomOrder,
   onOrder,
   onCompact,
+  onJewishDates,
 }: {
   language: Language;
   customOrder: boolean;
   order: string[];
   currentKey: string | null;
   compact: boolean;
+  jewishDates: boolean;
   onLanguage: (language: Language) => void;
   onCustomOrder: (enabled: boolean) => void;
   onOrder: (order: string[]) => void;
   onCompact: (compact: boolean) => void;
+  onJewishDates: (jewishDates: boolean) => void;
 }) {
   const i18n = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -137,6 +141,29 @@ export function Settings({
                 </button>
               </div>
               {customOrder ? <p className="mt-2 text-sm text-ink-soft">{i18n.t("orderHint")}</p> : null}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-medium">{i18n.t("dates")}</p>
+              <div className="mt-2 inline-flex rounded-full bg-parchment p-1" role="group" aria-label={i18n.t("dates")}>
+                <button
+                  type="button"
+                  aria-pressed={!jewishDates}
+                  className={cx("rounded-full px-4 py-1.5 text-sm", !jewishDates ? "bg-ink text-paper" : "text-ink")}
+                  onClick={() => onJewishDates(false)}
+                >
+                  {i18n.t("datesGregorian")}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={jewishDates}
+                  className={cx("rounded-full px-4 py-1.5 text-sm", jewishDates ? "bg-ink text-paper" : "text-ink")}
+                  onClick={() => onJewishDates(true)}
+                >
+                  {i18n.t("datesJewish")}
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-ink-soft">{i18n.t("datesHint")}</p>
             </div>
 
             <div className="mt-4">

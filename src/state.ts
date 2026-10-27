@@ -19,6 +19,11 @@ export type DoneToday = {
   units?: DoneUnit[];
 };
 
+export type MissedDay = {
+  date: string;
+  units: DoneUnit[];
+};
+
 export type Settings = {
   pace: number;
   place: Place | null;
@@ -31,6 +36,10 @@ export type Settings = {
   masechtaOrder: string[] | null;
   calendarView: CalendarView;
   compact: boolean;
+  /** Hebrew calendar labels. Independent of `language`. */
+  jewishDates?: boolean;
+  /** Study days marked not done. Missing means the day was counted as done. */
+  missed?: MissedDay[];
 };
 
 const defaultSettings: Settings = {
@@ -65,6 +74,30 @@ export function sanitizeCalendarView(value: unknown): CalendarView {
 
 export function sanitizeAnchoredOn(value: unknown): string | null {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+export function sanitizeMissed(value: unknown): MissedDay[] {
+  if (!Array.isArray(value)) return [];
+  const byDate = new Map<string, MissedDay>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const date = sanitizeAnchoredOn((item as { date?: unknown }).date);
+    const rawUnits = (item as { units?: unknown }).units;
+    if (!date || !Array.isArray(rawUnits)) continue;
+    const units: DoneUnit[] = [];
+    for (const unit of rawUnits) {
+      if (!unit || typeof unit !== "object") continue;
+      const key = (unit as { key?: unknown }).key;
+      const daf = (unit as { daf?: unknown }).daf;
+      const amud = (unit as { amud?: unknown }).amud;
+      if (typeof key !== "string" || key.length === 0) continue;
+      if (typeof daf !== "number" || !Number.isInteger(daf)) continue;
+      if (amud !== "a" && amud !== "b") continue;
+      units.push({ key, daf, amud });
+    }
+    if (units.length) byDate.set(date, { date, units });
+  }
+  return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
 }
 
 export function sanitizeDays(days: unknown): number[] {

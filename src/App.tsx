@@ -2,12 +2,14 @@ import { useAtom } from "jotai";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Calendar } from "./components/Calendar.tsx";
 import { DafPicker } from "./components/DafPicker.tsx";
+import { MakeupList } from "./components/MakeupList.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { AmudLinks } from "./components/AmudLinks.tsx";
 import { I18nProvider, useI18n } from "./i18n.tsx";
 import { AMUDIM, AMUD_TOTAL, TOTAL, findAmud, findDaf, isCompletePlace, masechtaByKey, resolvePlace, type Amud, type Daf, type Masechta, type Place } from "./data/shas.ts";
 import { makeI18n, type I18n } from "./lib/i18n.ts";
 import { isStandardOrder, sanitizeOrder, studyIndex } from "./lib/order.ts";
+import { formatScheduleFull, formatScheduleWhen, hebrewMonthStart } from "./lib/dates.ts";
 import {
   WEEKDAYS,
   addDays,
@@ -15,12 +17,11 @@ import {
   formatDafAmount,
   formatGroup,
   formatIndices,
-  formatMonth,
   formatPace,
-  formatWeekday,
   groupAmudim,
   nextMasechtaOn,
   remainingDapim,
+  sessionOnDate,
   type Plan,
   type Session,
   monthStart,
@@ -30,7 +31,7 @@ import {
   toISODate,
 } from "./lib/plan.ts";
 import { officialOn } from "./lib/official.ts";
-import { clampPace, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, settingsAtom, type CalendarView, type DoneToday, type Language } from "./state.ts";
+import { clampPace, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, sanitizeMissed, settingsAtom, type CalendarView, type DoneToday, type DoneUnit, type Language, type MissedDay } from "./state.ts";
 
 type DafYomiPayload = {
   current_daf: { key: string; daf: number; masechta?: string };
@@ -39,7 +40,7 @@ type DafYomiPayload = {
 
 type OfficialState = { status: "loading" | "error" | "ready"; data: DafYomiPayload | null };
 type Notice = { text: string; undo?: boolean };
-type Undo = { place: Place | null; anchoredOn: string | null; doneToday: DoneToday | null };
+type Undo = { place: Place | null; anchoredOn: string | null; doneToday: DoneToday | null; missed: MissedDay[] };
 
 function isDafYomiPayload(value: unknown): value is DafYomiPayload {
   if (!value || typeof value !== "object") return false;
@@ -105,11 +106,15 @@ export default function App() {
   const today = useToday();
   const todayIso = toISODate(today);
   const [selected, setSelected] = useState(today);
-  const [month, setMonth] = useState(() => monthStart(today));
+  const [month, setMonth] = useState(() => (settings.jewishDates === true ? hebrewMonthStart(today) : monthStart(today)));
 
   const pace = clampPace(settings.pace);
   const studyDays = useMemo(() => sanitizeDays(settings.studyDays), [settings.studyDays]);
   const language = sanitizeLanguage(settings.language);
+  const jewishDates = settings.jewishDates === true;
+  const dateStyle = useMemo(() => ({ lang: language, jewish: jewishDates }), [language, jewishDates]);
+  const missed = useMemo(() => sanitizeMissed(settings.missed), [settings.missed]);
+  const missedDates = useMemo(() => new Set(missed.map((item) => item.date)), [missed]);
   const calendarView = sanitizeCalendarView(settings.calendarView);
   const customOrder = settings.customOrder === true;
   const compact = settings.compact === true;
@@ -167,6 +172,29 @@ export default function App() {
     setTrackedKey(placeKey);
     setViewKey(placeKey);
   }
+
+  const todayAssignment = useMemo(
+    () => sessionOnDate({
+      position: anchorIndex,
+      pace,
+      studyDays,
+      anchoredOn: parseISODate(anchoredOnIso),
+      date: today,
+      sequence,
+    }),
+    [anchorIndex, pace, studyDays, anchoredOnIso, today, sequence],
+  );
+  const historySession = useMemo(() => {
+    if (toISODate(selected) >= todayIso) return null;
+    return sessionOnDate({
+      position: anchorIndex,
+      pace,
+      studyDays,
+      anchoredOn: parseISODate(anchoredOnIso),
+      date: selected,
+      sequence,
+    });
+  }, [selected, todayIso, anchorIndex, pace, studyDays, anchoredOnIso, sequence]);
 
   const plan = useMemo(
     () =>
@@ -248,6 +276,7 @@ export default function App() {
       place: settings.place,
       anchoredOn: sanitizeAnchoredOn(settings.anchoredOn),
       doneToday: settings.doneToday ?? null,
+      missed: sanitizeMissed(settings.missed),
     });
   }
 
@@ -288,6 +317,7 @@ export default function App() {
     setSettings((current) => ({
       ...current,
       place: next ? current.place : { complete: true },
+      missed: sanitizeMissed(current.missed).filter((item) => item.date !== todayIso),
       doneToday: {
         date: todayIso,
         from: { key: first.key, daf: first.daf, amud: first.amud },
@@ -325,6 +355,7 @@ export default function App() {
       place: undo.place,
       anchoredOn: undo.anchoredOn,
       doneToday: undo.doneToday,
+      missed: undo.missed,
     }));
     setUndo(null);
     setNotice({ text: i18n.t("restored") });
@@ -357,6 +388,55 @@ export default function App() {
 
   function setCompact(next: boolean) {
     setSettings((current) => ({ ...current, compact: next }));
+  }
+
+  function setJewishDates(next: boolean) {
+    setSettings((current) => ({ ...current, jewishDates: next }));
+    setMonth((current) => {
+      const showingToday = current.getFullYear() === today.getFullYear() && current.getMonth() === today.getMonth();
+      const focus = next && showingToday ? today : current;
+      return next ? hebrewMonthStart(focus) : monthStart(focus);
+    });
+  }
+
+  function markMissed(date: Date) {
+    const iso = toISODate(date);
+    if (iso > todayIso) return;
+    const session = sessionOnDate({
+      position: anchorIndex,
+      pace,
+      studyDays,
+      anchoredOn: anchoredOnDate,
+      date,
+      sequence,
+    });
+    if (!session) {
+      setNotice({ text: i18n.t("nothingToMiss") });
+      return;
+    }
+    const units: DoneUnit[] = [];
+    for (const index of session.indices) {
+      const unit = AMUDIM[index];
+      if (unit) units.push({ key: unit.key, daf: unit.daf, amud: unit.amud });
+    }
+    remember();
+    setSettings((current) => ({
+      ...current,
+      missed: [...sanitizeMissed(current.missed).filter((item) => item.date !== iso), { date: iso, units }]
+        .sort((left, right) => left.date.localeCompare(right.date)),
+      doneToday: iso === todayIso ? null : current.doneToday,
+    }));
+    setNotice({ text: i18n.t("markedMissed", { range: formatIndices(session.indices, i18n.groupOptions) }), undo: true });
+  }
+
+  function markMadeUp(date: Date) {
+    const iso = toISODate(date);
+    remember();
+    setSettings((current) => ({
+      ...current,
+      missed: sanitizeMissed(current.missed).filter((item) => item.date !== iso),
+    }));
+    setNotice({ text: i18n.t("markedMadeUp"), undo: true });
   }
 
   function toggleStudyDay(day: number) {
@@ -416,10 +496,12 @@ export default function App() {
         order={order}
         currentKey={active?.key ?? null}
         compact={compact}
+        jewishDates={jewishDates}
         onLanguage={setLanguage}
         onCustomOrder={setCustomOrder}
         onOrder={setMasechtaOrder}
         onCompact={setCompact}
+        onJewishDates={setJewishDates}
       />
 
       {compact ? null : (
@@ -455,6 +537,11 @@ export default function App() {
           onStartOver={() => firstUnit && choosePlace(firstUnit)}
           startName={startName}
           compact={compact}
+          dates={dateStyle}
+          canMiss={!complete && Boolean(todayAssignment)}
+          missedToday={missedDates.has(todayIso)}
+          onMiss={() => markMissed(today)}
+          onDid={() => markMadeUp(today)}
         />
         <Controls
           pace={pace}
@@ -470,7 +557,12 @@ export default function App() {
           apart={apart}
           onUseOfficial={() => officialAmud && choosePlace(officialAmud)}
           sameAsOfficial={Boolean(officialAmud && active && officialAmud.amudIndex === active.amudIndex)}
+          dates={dateStyle}
         />
+      </div>
+
+      <div className="mt-4">
+        <MakeupList items={missed} compact={compact} dates={dateStyle} onMadeUp={(iso) => markMadeUp(parseISODate(iso))} />
       </div>
 
       <div className="mt-4">
@@ -503,6 +595,11 @@ export default function App() {
           caughtUp={caughtUp}
           view={calendarView}
           onView={setCalendarView}
+          dates={dateStyle}
+          missedDates={missedDates}
+          historySession={historySession}
+          onMiss={markMissed}
+          onMadeUp={markMadeUp}
         />
       </div>
 
@@ -558,6 +655,11 @@ function TodayCard({
   onStartOver,
   startName,
   compact,
+  dates,
+  canMiss,
+  missedToday,
+  onMiss,
+  onDid,
 }: {
   complete: boolean;
   caughtUp: boolean;
@@ -571,6 +673,11 @@ function TodayCard({
   onStartOver: () => void;
   startName: string;
   compact: boolean;
+  dates: { lang: "en" | "he"; jewish: boolean };
+  canMiss: boolean;
+  missedToday: boolean;
+  onMiss: () => void;
+  onDid: () => void;
 }) {
   const i18n = useI18n();
 
@@ -601,7 +708,7 @@ function TodayCard({
   }
 
   let indices = todaySession?.indices ?? [];
-  let kicker = i18n.t("todayKicker", { date: formatWeekday(today, i18n.locale) });
+  let kicker = i18n.t("todayKicker", { date: formatScheduleWhen(today, dates) });
   let lede: string | null = null;
   let action: ReactNode = null;
 
@@ -615,7 +722,7 @@ function TodayCard({
     );
   } else if (caughtUp && nextSession) {
     indices = nextSession.indices;
-    kicker = i18n.t("nextKicker", { date: formatWeekday(nextSession.date, i18n.locale) });
+    kicker = i18n.t("nextKicker", { date: formatScheduleWhen(nextSession.date, dates) });
     lede = finishedIndices.length
       ? i18n.t("finishedRange", { range: formatIndices(finishedIndices, i18n.groupOptions) })
       : i18n.t("alreadyLogged");
@@ -626,9 +733,20 @@ function TodayCard({
     );
   } else if (nextSession) {
     indices = nextSession.indices;
-    kicker = i18n.t("nextKicker", { date: formatWeekday(nextSession.date, i18n.locale) });
+    kicker = i18n.t("nextKicker", { date: formatScheduleWhen(nextSession.date, dates) });
     lede = i18n.t("todayOff");
   }
+
+  if (missedToday && todaySession) lede = i18n.t("onMakeup");
+  const missAction = canMiss ? (
+    <button
+      type="button"
+      className={compact ? "rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-paper" : "rounded-full bg-white/15 px-4 py-2 text-sm font-medium text-paper"}
+      onClick={missedToday ? onDid : onMiss}
+    >
+      {i18n.t(missedToday ? "didToday" : "missToday")}
+    </button>
+  ) : null;
 
   const groups = groupAmudim(indices);
   const lead = groups[0];
@@ -649,7 +767,7 @@ function TodayCard({
       <div className="absolute inset-x-0 top-0 h-px bg-gold" />
       <div className={compact ? "flex flex-wrap items-center justify-between gap-x-3 gap-y-1" : ""}>
         <p className="text-xs font-medium tracking-[0.16em] text-gold uppercase">{kicker}</p>
-        {compact ? action : null}
+        {compact ? <span className="flex flex-wrap items-center gap-2">{action}{missAction}</span> : null}
       </div>
       {lead ? (
         <>
@@ -696,6 +814,7 @@ function TodayCard({
       {compact ? null : (
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {action}
+        {missAction}
         <p className="text-sm text-paper/75">{i18n.t("scanHint")}</p>
       </div>
       )}
@@ -717,6 +836,7 @@ function Controls({
   apart,
   onUseOfficial,
   sameAsOfficial,
+  dates,
 }: {
   pace: number;
   onPace: (pace: number) => void;
@@ -731,18 +851,19 @@ function Controls({
   apart: number | null;
   onUseOfficial: () => void;
   sameAsOfficial: boolean;
+  dates: { lang: "en" | "he"; jewish: boolean };
 }) {
   const i18n = useI18n();
   let boundaryText = i18n.t("lastMasechta");
   if (boundary?.upcoming && boundary.starts) {
-    const when = formatWeekday(boundary.starts.date, i18n.locale);
+    const when = formatScheduleWhen(boundary.starts.date, dates);
     boundaryText = boundary.starts.iso === todayIso
       ? i18n.t("beginsToday", { name: i18n.name(boundary.upcoming) })
       : i18n.t("beginsWhen", { name: i18n.name(boundary.upcoming), when });
   } else if (boundary?.finishes && !boundary.upcoming) {
     boundaryText = i18n.t("closesWhen", {
       name: i18n.name(boundary.current),
-      when: formatWeekday(boundary.finishes.date, i18n.locale),
+      when: formatScheduleWhen(boundary.finishes.date, dates),
     });
   }
 
@@ -812,7 +933,7 @@ function Controls({
           <dt className="text-ink-soft">{i18n.t("siyum")}</dt>
           <dd className="font-medium">
             {plan.finishDate
-              ? `${formatMonth(plan.finishDate, i18n.locale)} · ${plan.studyDayCount} ${plan.studyDayCount === 1 ? i18n.t("studyDay") : i18n.t("studyDaysWord")}`
+              ? `${formatScheduleFull(plan.finishDate, dates)} · ${plan.studyDayCount} ${plan.studyDayCount === 1 ? i18n.t("studyDay") : i18n.t("studyDaysWord")}`
               : i18n.t("atTheEnd")}
           </dd>
         </div>
