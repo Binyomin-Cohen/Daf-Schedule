@@ -1,9 +1,10 @@
+import { DAF_YOMI_MASECHTOS } from "../data/masechtaApi.ts";
 import { DAPIM, TOTAL, type Daf } from "../data/shas.ts";
-import { startOfDay } from "./plan.ts";
+import { parseISODate, startOfDay } from "./plan.ts";
 
-// Berachos 2 of cycle 14, confirmed against the Daf Yomi API.
-const ANCHOR = startOfDay(new Date(2020, 0, 5));
-const ANCHOR_CYCLE = 14;
+const opening = DAF_YOMI_MASECHTOS[0].first;
+const ANCHOR = parseISODate(opening.date);
+const ANCHOR_CYCLE = opening.cycle.number;
 
 function ordinal(number: number): string {
   const mod100 = number % 100;

@@ -1,4 +1,4 @@
-import { WEEKDAYS } from "./plan.ts";
+import { WEEKDAYS, hebrewNumeral } from "./plan.ts";
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 const HEBREW_WEEKDAY_NAMES = ["יום ראשון", "יום שני", "יום שלישי", "יום רביעי", "יום חמישי", "יום שישי", "שבת"];
@@ -132,7 +132,7 @@ const STRINGS = {
     language: "שפה",
     languageEnglish: "English",
     languageHebrew: "עברית",
-    languageHint: "עברית לכל הממשק. מספרי הדפים נשארים בספרות.",
+    languageHint: "עברית לכל הממשק. מספרי הדפים באותיות.",
     order: "סדר המסכתות",
     orderStandard: "דף יומי",
     orderCustom: "סדר שלי",
@@ -300,6 +300,9 @@ export function makeI18n(language: string) {
       if (lang !== "he") return letter;
       return letter === "a" ? "א" : "ב";
     },
+    dafNumber(value: number) {
+      return lang === "he" ? hebrewNumeral(value) : String(value);
+    },
     dafWord(count: number) {
       const amount = Math.round(Number(count) * 2) / 2;
       return amount === 0.5 || amount === 1 ? dict.wordDaf : dict.wordDapim;
@@ -313,7 +316,9 @@ export function makeI18n(language: string) {
       return lang === "he" ? `מחזור ${number}` : `${ordinal(number)} cycle`;
     },
     label(unit: { name: string; hebrew: string; daf: number; amud: string }) {
-      return `${lang === "he" ? unit.hebrew : unit.name} ${unit.daf}${lang === "he" ? (unit.amud === "a" ? "א" : "ב") : unit.amud}`;
+      const number = lang === "he" ? hebrewNumeral(unit.daf) : String(unit.daf);
+      const side = lang === "he" ? (unit.amud === "a" ? "א" : "ב") : unit.amud;
+      return `${lang === "he" ? unit.hebrew : unit.name} ${number}${lang === "he" ? " " : ""}${side}`;
     },
     groupOptions: { hebrew: lang === "he" },
   };

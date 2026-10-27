@@ -193,8 +193,11 @@ export default function App() {
     let cancelled = false;
 
     async function loadOfficial() {
-      // The dev server proxies the first URL. The public API is tried second;
-      // it currently omits CORS headers, so browsers often cannot read it directly.
+      // Masechta lengths are stored locally. This call only learns the live
+      // cycle, so today's official daf can replace the local one when the
+      // API answers. The dev server proxies the first URL. The public API is
+      // tried second; it currently omits CORS headers, so browsers often
+      // cannot read it directly.
       const urls = ["/api/daf-yomi", "https://www.shas.org/daf-yomi-api/"];
       for (const url of urls) {
         try {
@@ -368,7 +371,7 @@ export default function App() {
   }
 
   const firstUnit = AMUDIM[sequence[0]];
-  const startName = firstUnit ? `${i18n.name(firstUnit)} ${firstUnit.daf}` : "";
+  const startName = firstUnit ? `${i18n.name(firstUnit)} ${i18n.dafNumber(firstUnit.daf)}` : "";
 
   if (!settings.place) {
     return (
@@ -407,8 +410,20 @@ export default function App() {
   return (
     <I18nProvider i18n={i18n}>
     <div dir={i18n.dir} lang={i18n.lang} className="mx-auto min-h-dvh max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <Settings
+        language={language}
+        customOrder={customOrder}
+        order={order}
+        currentKey={active?.key ?? null}
+        compact={compact}
+        onLanguage={setLanguage}
+        onCustomOrder={setCustomOrder}
+        onOrder={setMasechtaOrder}
+        onCompact={setCompact}
+      />
+
       {compact ? null : (
-      <header className="flex flex-wrap items-end justify-between gap-6">
+      <header className="mt-6 flex flex-wrap items-end justify-between gap-6">
         <div className="max-w-xl">
           <p className="text-xs font-medium tracking-[0.18em] text-wine uppercase">{i18n.t("personal")}</p>
           <h1 className="mt-2 font-display text-5xl tracking-tight sm:text-6xl">{i18n.t("appTitle")}</h1>
@@ -426,7 +441,7 @@ export default function App() {
       </header>
       )}
 
-      <div className={`${compact ? "" : "mt-8 "}grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]`}>
+      <div className={`${compact ? "mt-4" : "mt-8 "}grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]`}>
         <TodayCard
           complete={complete}
           caughtUp={caughtUp}
@@ -459,16 +474,19 @@ export default function App() {
       </div>
 
       <div className="mt-4">
-        <Settings
-          language={language}
-          customOrder={customOrder}
+        <DafPicker
+          position={position}
+          currentDafIndex={complete ? null : (active?.index ?? null)}
+          currentAmud={active?.amud ?? "a"}
+          currentKey={complete ? null : (active?.key ?? null)}
+          sessionDafIndices={sessionDafIndices}
+          viewKey={viewKey}
+          onViewKey={setViewKey}
+          onPlace={choosePlace}
           order={order}
-          currentKey={active?.key ?? null}
-          compact={compact}
-          onLanguage={setLanguage}
-          onCustomOrder={setCustomOrder}
-          onOrder={setMasechtaOrder}
-          onCompact={setCompact}
+          customOrder={customOrder && !orderIsStandard}
+          rank={rank}
+          lastRankByDaf={lastRankByDaf}
         />
       </div>
 
@@ -485,23 +503,6 @@ export default function App() {
           caughtUp={caughtUp}
           view={calendarView}
           onView={setCalendarView}
-        />
-      </div>
-
-      <div className="mt-4">
-        <DafPicker
-          position={position}
-          currentDafIndex={complete ? null : (active?.index ?? null)}
-          currentAmud={active?.amud ?? "a"}
-          currentKey={complete ? null : (active?.key ?? null)}
-          sessionDafIndices={sessionDafIndices}
-          viewKey={viewKey}
-          onViewKey={setViewKey}
-          onPlace={choosePlace}
-          order={order}
-          customOrder={customOrder && !orderIsStandard}
-          rank={rank}
-          lastRankByDaf={lastRankByDaf}
         />
       </div>
 
@@ -670,8 +671,8 @@ function TodayCard({
               <div key={index} className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2">
                 <button type="button" className="text-start" onClick={() => onPlace(unit)} aria-label={i18n.t("setAmud", { name: i18n.label(unit) })}>
                   <span className="block font-display text-3xl leading-none">
-                    {unit.daf}
-                    <span className="text-lg">{i18n.amud(unit.amud)}</span>
+                    {i18n.dafNumber(unit.daf)}
+                    <span className={i18n.lang === "he" ? "ms-1 text-lg" : "text-lg"}>{i18n.amud(unit.amud)}</span>
                   </span>
                   <span className="mt-1 block text-[11px] tracking-wide text-paper/75 uppercase">{i18n.short(unit)}</span>
                 </button>
@@ -686,7 +687,7 @@ function TodayCard({
         <ul className={compact ? "mt-2 space-y-1 text-sm text-paper/80" : "mt-4 space-y-1 text-sm text-paper/80"}>
           {notes.map((daf) => (
             <li key={daf.index}>
-              {i18n.name(daf)} {daf.daf}: {i18n.note(daf)}
+              {i18n.name(daf)} {i18n.dafNumber(daf.daf)}: {i18n.note(daf)}
             </li>
           ))}
         </ul>
@@ -822,7 +823,7 @@ function Controls({
         <div>
           <dt className="text-ink-soft">{i18n.t("dafYomi")}</dt>
           <dd className="font-medium">
-            {cycleLabel} · {i18n.name(officialDaf)} {officialDaf.daf}
+            {cycleLabel} · {i18n.name(officialDaf)} {i18n.dafNumber(officialDaf.daf)}
             {listedMasechta ? ` ${i18n.t("listedAs", { name: i18n.name(listedMasechta) })}` : ""}
             <span className="mt-1 block font-normal text-ink-soft">
               {apart == null ? i18n.t("customCompare") : gapLabel(apart, i18n)}

@@ -1,12 +1,11 @@
 /**
- * Masechta order and daf ranges follow the Shas.org Daf Yomi and PDF APIs.
- * Dapim are counted the way Daf Yomi counts them: daf 2 through the last
- * printed daf, including a final amud aleph. Me'ilah, Kinim, Tamid, and
- * Middos share one printed volume (daf 2–37); the Daf Yomi API calls that
- * whole stretch Me'ilah.
- * https://www.shas.org/daf-yomi-api/api-documentation.html
- * https://www.shas.org/daf-pdf/api/api-documentation.html
+ * Masechta order and daf ranges come from the captured Shas.org responses
+ * in masechtaApi.ts. Dapim are counted the way Daf Yomi counts them: daf 2
+ * through the last printed daf, including a final amud aleph. Me'ilah,
+ * Kinim, Tamid, and Middos share one printed volume; the Daf Yomi response
+ * calls that whole stretch Me'ilah.
  */
+import { DAF_YOMI_MASECHTOS, PDF_MASECHTA_LIST, capturedEndAmud, type DafYomiMasechta } from "./masechtaApi.ts";
 
 export const SEDERS = [
   { id: "Zeraim", hebrew: "זרעים", color: "#5f6e32" },
@@ -76,48 +75,118 @@ const NOTES: Record<string, Note> = {
   },
 };
 
-const MASECHTA_DEFS: MasechtaDef[] = [
-  { key: "berachos", name: "Berachos", shortName: "Berachos", hebrew: "ברכות", seder: "Zeraim", end: 64, endAmud: "a" },
-  { key: "shabbos", name: "Shabbos", shortName: "Shabbos", hebrew: "שבת", seder: "Moed", end: 157, endAmud: "b" },
-  { key: "eruvin", name: "Eruvin", shortName: "Eruvin", hebrew: "עירובין", seder: "Moed", end: 105, endAmud: "a" },
-  { key: "pesachim", name: "Pesachim", shortName: "Pesachim", hebrew: "פסחים", seder: "Moed", end: 121, endAmud: "b" },
-  { key: "shekalim", name: "Shekalim", shortName: "Shekalim", hebrew: "שקלים", seder: "Moed", end: 22, endAmud: "b" },
-  { key: "yoma", name: "Yoma", shortName: "Yoma", hebrew: "יומא", seder: "Moed", end: 88, endAmud: "a" },
-  { key: "sukkah", name: "Sukkah", shortName: "Sukkah", hebrew: "סוכה", seder: "Moed", end: 56, endAmud: "b" },
-  { key: "beitzah", name: "Beitzah", shortName: "Beitzah", hebrew: "ביצה", seder: "Moed", end: 40, endAmud: "b" },
-  { key: "rosh-hashanah", name: "Rosh Hashanah", shortName: "Rosh Hash.", hebrew: "ראש השנה", seder: "Moed", end: 35, endAmud: "a" },
-  { key: "taanis", name: "Ta'anis", shortName: "Ta'anis", hebrew: "תענית", seder: "Moed", end: 31, endAmud: "a" },
-  { key: "megillah", name: "Megillah", shortName: "Megillah", hebrew: "מגילה", seder: "Moed", end: 32, endAmud: "a" },
-  { key: "moed-katan", name: "Moed Katan", shortName: "Moed Katan", hebrew: "מועד קטן", seder: "Moed", end: 29, endAmud: "a" },
-  { key: "chagigah", name: "Chagigah", shortName: "Chagigah", hebrew: "חגיגה", seder: "Moed", end: 27, endAmud: "a" },
-  { key: "yevamos", name: "Yevamos", shortName: "Yevamos", hebrew: "יבמות", seder: "Nashim", end: 122, endAmud: "a" },
-  { key: "kesubos", name: "Kesubos", shortName: "Kesubos", hebrew: "כתובות", seder: "Nashim", end: 112, endAmud: "b" },
-  { key: "nedarim", name: "Nedarim", shortName: "Nedarim", hebrew: "נדרים", seder: "Nashim", end: 91, endAmud: "b" },
-  { key: "nazir", name: "Nazir", shortName: "Nazir", hebrew: "נזיר", seder: "Nashim", end: 66, endAmud: "b" },
-  { key: "sotah", name: "Sotah", shortName: "Sotah", hebrew: "סוטה", seder: "Nashim", end: 49, endAmud: "b" },
-  { key: "gittin", name: "Gittin", shortName: "Gittin", hebrew: "גיטין", seder: "Nashim", end: 90, endAmud: "b" },
-  { key: "kiddushin", name: "Kiddushin", shortName: "Kiddushin", hebrew: "קידושין", seder: "Nashim", end: 82, endAmud: "b" },
-  { key: "bava-kamma", name: "Bava Kamma", shortName: "B. Kamma", hebrew: "בבא קמא", seder: "Nezikin", end: 119, endAmud: "b" },
-  { key: "bava-metzia", name: "Bava Metzia", shortName: "B. Metzia", hebrew: "בבא מציעא", seder: "Nezikin", end: 119, endAmud: "a" },
-  { key: "bava-basra", name: "Bava Basra", shortName: "B. Basra", hebrew: "בבא בתרא", seder: "Nezikin", end: 176, endAmud: "b" },
-  { key: "sanhedrin", name: "Sanhedrin", shortName: "Sanhedrin", hebrew: "סנהדרין", seder: "Nezikin", end: 113, endAmud: "b" },
-  { key: "makkos", name: "Makkos", shortName: "Makkos", hebrew: "מכות", seder: "Nezikin", end: 24, endAmud: "b" },
-  { key: "shevuos", name: "Shevuos", shortName: "Shevuos", hebrew: "שבועות", seder: "Nezikin", end: 49, endAmud: "b" },
-  { key: "avodah-zarah", name: "Avodah Zarah", shortName: "A. Zarah", hebrew: "עבודה זרה", seder: "Nezikin", end: 76, endAmud: "b" },
-  { key: "horayos", name: "Horayos", shortName: "Horayos", hebrew: "הוריות", seder: "Nezikin", end: 14, endAmud: "a" },
-  { key: "zevachim", name: "Zevachim", shortName: "Zevachim", hebrew: "זבחים", seder: "Kodashim", end: 120, endAmud: "b" },
-  { key: "menachos", name: "Menachos", shortName: "Menachos", hebrew: "מנחות", seder: "Kodashim", end: 110, endAmud: "a" },
-  { key: "chullin", name: "Chullin", shortName: "Chullin", hebrew: "חולין", seder: "Kodashim", end: 142, endAmud: "a" },
-  { key: "bechoros", name: "Bechoros", shortName: "Bechoros", hebrew: "בכורות", seder: "Kodashim", end: 61, endAmud: "a" },
-  { key: "arachin", name: "Arachin", shortName: "Arachin", hebrew: "ערכין", seder: "Kodashim", end: 34, endAmud: "a" },
-  { key: "temurah", name: "Temurah", shortName: "Temurah", hebrew: "תמורה", seder: "Kodashim", end: 34, endAmud: "a" },
-  { key: "kereisos", name: "Kereisos", shortName: "Kereisos", hebrew: "כריתות", seder: "Kodashim", end: 28, endAmud: "b" },
-  { key: "meilah", name: "Me'ilah", shortName: "Me'ilah", hebrew: "מעילה", seder: "Kodashim", end: 22, endAmud: "b" },
-  { key: "kinim", name: "Kinim", shortName: "Kinim", hebrew: "קינים", seder: "Kodashim", start: 23, end: 25, endAmud: "b", pdfKey: "kinim" },
-  { key: "tamid", name: "Tamid", shortName: "Tamid", hebrew: "תמיד", seder: "Kodashim", start: 26, end: 33, endAmud: "b", pdfKey: "tamid" },
-  { key: "middos", name: "Middos", shortName: "Middos", hebrew: "מידות", seder: "Kodashim", start: 34, end: 37, endAmud: "b", pdfKey: "middos" },
-  { key: "niddah", name: "Niddah", shortName: "Niddah", hebrew: "נדה", seder: "Taharos", end: 73, endAmud: "a" },
+const FACE: Record<string, { shortName: string; hebrew: string; seder: string }> = {
+  berachos: { shortName: "Berachos", hebrew: "ברכות", seder: "Zeraim" },
+  shabbos: { shortName: "Shabbos", hebrew: "שבת", seder: "Moed" },
+  eruvin: { shortName: "Eruvin", hebrew: "עירובין", seder: "Moed" },
+  pesachim: { shortName: "Pesachim", hebrew: "פסחים", seder: "Moed" },
+  shekalim: { shortName: "Shekalim", hebrew: "שקלים", seder: "Moed" },
+  yoma: { shortName: "Yoma", hebrew: "יומא", seder: "Moed" },
+  sukkah: { shortName: "Sukkah", hebrew: "סוכה", seder: "Moed" },
+  beitzah: { shortName: "Beitzah", hebrew: "ביצה", seder: "Moed" },
+  "rosh-hashanah": { shortName: "Rosh Hash.", hebrew: "ראש השנה", seder: "Moed" },
+  taanis: { shortName: "Ta'anis", hebrew: "תענית", seder: "Moed" },
+  megillah: { shortName: "Megillah", hebrew: "מגילה", seder: "Moed" },
+  "moed-katan": { shortName: "Moed Katan", hebrew: "מועד קטן", seder: "Moed" },
+  chagigah: { shortName: "Chagigah", hebrew: "חגיגה", seder: "Moed" },
+  yevamos: { shortName: "Yevamos", hebrew: "יבמות", seder: "Nashim" },
+  kesubos: { shortName: "Kesubos", hebrew: "כתובות", seder: "Nashim" },
+  nedarim: { shortName: "Nedarim", hebrew: "נדרים", seder: "Nashim" },
+  nazir: { shortName: "Nazir", hebrew: "נזיר", seder: "Nashim" },
+  sotah: { shortName: "Sotah", hebrew: "סוטה", seder: "Nashim" },
+  gittin: { shortName: "Gittin", hebrew: "גיטין", seder: "Nashim" },
+  kiddushin: { shortName: "Kiddushin", hebrew: "קידושין", seder: "Nashim" },
+  "bava-kamma": { shortName: "B. Kamma", hebrew: "בבא קמא", seder: "Nezikin" },
+  "bava-metzia": { shortName: "B. Metzia", hebrew: "בבא מציעא", seder: "Nezikin" },
+  "bava-basra": { shortName: "B. Basra", hebrew: "בבא בתרא", seder: "Nezikin" },
+  sanhedrin: { shortName: "Sanhedrin", hebrew: "סנהדרין", seder: "Nezikin" },
+  makkos: { shortName: "Makkos", hebrew: "מכות", seder: "Nezikin" },
+  shevuos: { shortName: "Shevuos", hebrew: "שבועות", seder: "Nezikin" },
+  "avodah-zarah": { shortName: "A. Zarah", hebrew: "עבודה זרה", seder: "Nezikin" },
+  horayos: { shortName: "Horayos", hebrew: "הוריות", seder: "Nezikin" },
+  zevachim: { shortName: "Zevachim", hebrew: "זבחים", seder: "Kodashim" },
+  menachos: { shortName: "Menachos", hebrew: "מנחות", seder: "Kodashim" },
+  chullin: { shortName: "Chullin", hebrew: "חולין", seder: "Kodashim" },
+  bechoros: { shortName: "Bechoros", hebrew: "בכורות", seder: "Kodashim" },
+  arachin: { shortName: "Arachin", hebrew: "ערכין", seder: "Kodashim" },
+  temurah: { shortName: "Temurah", hebrew: "תמורה", seder: "Kodashim" },
+  kereisos: { shortName: "Kereisos", hebrew: "כריתות", seder: "Kodashim" },
+  meilah: { shortName: "Me'ilah", hebrew: "מעילה", seder: "Kodashim" },
+  kinim: { shortName: "Kinim", hebrew: "קינים", seder: "Kodashim" },
+  tamid: { shortName: "Tamid", hebrew: "תמיד", seder: "Kodashim" },
+  middos: { shortName: "Middos", hebrew: "מידות", seder: "Kodashim" },
+  niddah: { shortName: "Niddah", hebrew: "נדה", seder: "Taharos" },
+};
+
+// Printed breaks inside the single Me'ilah volume the Daf Yomi API returns.
+const MEILAH_PARTS: Array<{ key: string; name: string; start: number; end: number }> = [
+  { key: "meilah", name: "Me'ilah", start: 2, end: 22 },
+  { key: "kinim", name: "Kinim", start: 23, end: 25 },
+  { key: "tamid", name: "Tamid", start: 26, end: 33 },
+  { key: "middos", name: "Middos", start: 34, end: 37 },
 ];
+
+function faceOf(key: string): { shortName: string; hebrew: string; seder: string } {
+  const face = FACE[key];
+  if (!face) throw new Error(`Missing Hebrew name for ${key}`);
+  return face;
+}
+
+function defFromSpan(span: DafYomiMasechta): MasechtaDef {
+  const key = span.first.current_daf.key;
+  const end = span.last.current_daf.daf;
+  const face = faceOf(key);
+  return {
+    key,
+    name: span.first.current_daf.masechta,
+    shortName: face.shortName,
+    hebrew: face.hebrew,
+    seder: face.seder,
+    start: span.first.current_daf.daf,
+    end,
+    endAmud: capturedEndAmud(key, end),
+  };
+}
+
+function expandMeilah(span: DafYomiMasechta): MasechtaDef[] {
+  const volumeStart = span.first.current_daf.daf;
+  const volumeEnd = span.last.current_daf.daf;
+  const defs: MasechtaDef[] = [];
+  let cursor = volumeStart;
+  for (const part of MEILAH_PARTS) {
+    const start = part.key === "meilah" ? volumeStart : part.start;
+    if (start !== cursor) throw new Error(`Me'ilah split leaves a gap before ${part.key}`);
+    const face = faceOf(part.key);
+    defs.push({
+      key: part.key,
+      name: part.key === "meilah" ? span.first.current_daf.masechta : part.name,
+      shortName: face.shortName,
+      hebrew: face.hebrew,
+      seder: face.seder,
+      start,
+      end: part.end,
+      endAmud: capturedEndAmud(part.key, part.end),
+    });
+    cursor = part.end + 1;
+  }
+  if (cursor !== volumeEnd + 1) {
+    throw new Error(`Me'ilah split ends at daf ${cursor - 1}; the API volume ends at ${volumeEnd}`);
+  }
+  return defs;
+}
+
+function cycleLength(): number {
+  const start = DAF_YOMI_MASECHTOS[0]?.first.date;
+  const next = DAF_YOMI_MASECHTOS[DAF_YOMI_MASECHTOS.length - 1]?.last.next_masechta.starts;
+  if (!start || !next) throw new Error("Captured Daf Yomi cycle is empty");
+  const [startYear, startMonth, startDay] = start.split("-").map(Number);
+  const [nextYear, nextMonth, nextDay] = next.split("-").map(Number);
+  return Math.round((Date.UTC(nextYear, nextMonth - 1, nextDay) - Date.UTC(startYear, startMonth - 1, startDay)) / 86_400_000);
+}
+
+const MASECHTA_DEFS: MasechtaDef[] = DAF_YOMI_MASECHTOS.flatMap((span) =>
+  span.first.current_daf.key === "meilah" ? expandMeilah(span) : [defFromSpan(span)],
+);
 
 function buildShas(): { dapim: Daf[]; masechtos: Masechta[]; lookup: Map<string, Map<number, Daf>> } {
   const dapim: Daf[] = [];
@@ -155,6 +224,15 @@ function buildShas(): { dapim: Daf[]; masechtos: Masechta[]; lookup: Map<string,
       count: def.end - start + 1,
     };
   });
+
+  if (dapim.length !== cycleLength()) {
+    throw new Error(`Captured cycle is ${cycleLength()} days, but the catalog has ${dapim.length} dapim`);
+  }
+  for (const def of MASECHTA_DEFS) {
+    if (!PDF_MASECHTA_LIST.available_masechtot.includes(def.key)) {
+      throw new Error(`${def.key} is missing from the captured masechta list`);
+    }
+  }
 
   return { dapim, masechtos, lookup };
 }

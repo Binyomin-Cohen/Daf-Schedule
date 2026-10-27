@@ -454,8 +454,8 @@ function DayDetail({
               <div key={index} className="flex items-center gap-2 rounded-2xl bg-paper px-3 py-2">
                 <button type="button" className="text-start" onClick={() => onPlace(unit)} aria-label={i18n.t("setAmud", { name: i18n.label(unit) })}>
                   <span className="block font-display text-2xl leading-none">
-                    {unit.daf}
-                    <span className="text-base">{i18n.amud(unit.amud)}</span>
+                    {i18n.dafNumber(unit.daf)}
+                    <span className={i18n.lang === "he" ? "ms-1 text-base" : "text-base"}>{i18n.amud(unit.amud)}</span>
                   </span>
                   <span className="mt-1 block text-[11px] text-ink-soft">
                     {i18n.short(unit)} · {i18n.t("setAsNext")}
@@ -470,7 +470,7 @@ function DayDetail({
           <ul className="mt-3 space-y-1 text-sm text-ink-soft">
             {noted.map((unit) => (
               <li key={unit.index}>
-                {i18n.name(unit)} {unit.daf}: {i18n.note(unit)}
+                {i18n.name(unit)} {i18n.dafNumber(unit.daf)}: {i18n.note(unit)}
               </li>
             ))}
           </ul>

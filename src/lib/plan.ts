@@ -117,9 +117,37 @@ export function groupAmudim(indices: number[]): AmudGroup[] {
   return groups;
 }
 
+const HEBREW_ONES = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+const HEBREW_TENS = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
+const HEBREW_HUNDREDS = ["", "ק", "ר", "ש", "ת"];
+
+/** Daf numbers as Hebrew letters: 22 is כב, and 15 and 16 are טו and טז. */
+export function hebrewNumeral(value: number): string {
+  const number = Math.trunc(value);
+  if (number <= 0 || number >= 1000) return String(value);
+  const hundreds = Math.floor(number / 100);
+  const belowHundred = number % 100;
+  const prefix = HEBREW_HUNDREDS[hundreds] ?? "";
+  if (belowHundred === 15) return `${prefix}טו`;
+  if (belowHundred === 16) return `${prefix}טז`;
+  const tens = Math.floor(belowHundred / 10);
+  const ones = belowHundred % 10;
+  return `${prefix}${HEBREW_TENS[tens] ?? ""}${HEBREW_ONES[ones] ?? ""}`;
+}
+
 function amudMark(unit: Amud, hebrew: boolean): string {
   if (!hebrew) return unit.amud;
   return unit.amud === "a" ? "א" : "ב";
+}
+
+function dafText(daf: number, hebrew: boolean): string {
+  return hebrew ? hebrewNumeral(daf) : String(daf);
+}
+
+function withAmud(daf: number, unit: Amud, hebrew: boolean): string {
+  const number = dafText(daf, hebrew);
+  const mark = amudMark(unit, hebrew);
+  return hebrew ? `${number} ${mark}` : `${number}${mark}`;
 }
 
 export type FormatGroupOptions = {
@@ -131,15 +159,15 @@ export function formatGroup(group: AmudGroup, { short = false, hebrew = false }:
   const name = hebrew ? group.hebrew : short ? group.shortName : group.name;
   const single = group.startAmudIndex === group.endAmudIndex;
   if (single) {
-    if (group.start.amud === "a" && group.start.endAmud === "a") return `${name} ${group.start.daf}`;
-    return `${name} ${group.start.daf}${amudMark(group.start, hebrew)}`;
+    if (group.start.amud === "a" && group.start.endAmud === "a") return `${name} ${dafText(group.start.daf, hebrew)}`;
+    return `${name} ${withAmud(group.start.daf, group.start, hebrew)}`;
   }
-  if (group.start.daf === group.end.daf) return `${name} ${group.start.daf}`;
+  if (group.start.daf === group.end.daf) return `${name} ${dafText(group.start.daf, hebrew)}`;
   const startComplete = group.start.amud === "a";
   const endComplete = group.end.amud === "b" || group.end.endAmud === "a";
-  if (startComplete && endComplete) return `${name} ${group.start.daf}–${group.end.daf}`;
-  const startText = startComplete ? String(group.start.daf) : `${group.start.daf}${amudMark(group.start, hebrew)}`;
-  const endText = endComplete ? String(group.end.daf) : `${group.end.daf}${amudMark(group.end, hebrew)}`;
+  if (startComplete && endComplete) return `${name} ${dafText(group.start.daf, hebrew)}–${dafText(group.end.daf, hebrew)}`;
+  const startText = startComplete ? dafText(group.start.daf, hebrew) : withAmud(group.start.daf, group.start, hebrew);
+  const endText = endComplete ? dafText(group.end.daf, hebrew) : withAmud(group.end.daf, group.end, hebrew);
   return `${name} ${startText}–${endText}`;
 }
 

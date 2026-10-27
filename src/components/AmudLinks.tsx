@@ -17,7 +17,7 @@ export function AmudLink({ daf, amud, tone = "paper" }: { daf: PdfDaf; amud: Amu
       target="_blank"
       rel="noreferrer"
       className={className}
-      aria-label={i18n.t("openDaf", { name: `${i18n.name(daf)} ${daf.daf}${i18n.amud(amud)}` })}
+      aria-label={i18n.t("openDaf", { name: `${i18n.name(daf)} ${i18n.dafNumber(daf.daf)}${i18n.amud(amud)}` })}
     >
       {letter}
     </a>

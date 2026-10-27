@@ -125,7 +125,7 @@ export function DafPicker({
               id={`daf-${daf.index}`}
               type="button"
               aria-current={current ? "step" : undefined}
-              aria-label={i18n.t("setDaf", { name: `${i18n.name(daf)} ${daf.daf}${i18n.amud("a")}` })}
+              aria-label={i18n.t("setDaf", { name: `${i18n.name(daf)} ${i18n.dafNumber(daf.daf)}${i18n.amud("a")}` })}
               onClick={() => onPlace(daf)}
               className={cx(
                 "aspect-square rounded-xl text-sm tabular-nums transition",
@@ -137,11 +137,11 @@ export function DafPicker({
             >
               {current && currentAmud === "b" ? (
                 <>
-                  {daf.daf}
-                  <span className="text-[10px]">{i18n.amud("b")}</span>
+                  {i18n.dafNumber(daf.daf)}
+                  <span className={i18n.lang === "he" ? "ms-0.5 text-[10px]" : "text-[10px]"}>{i18n.amud("b")}</span>
                 </>
               ) : (
-                daf.daf
+                i18n.dafNumber(daf.daf)
               )}
             </button>
           );
