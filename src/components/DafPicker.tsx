@@ -87,8 +87,8 @@ export function DafPicker({
         ) : (
           SEDERS.map((seder) => (
             <div key={seder.id} className="flex shrink-0 items-center gap-1.5">
-              <span className="pe-1 text-[11px] font-medium tracking-wide text-ink-soft uppercase">
-                {i18n.lang === "he" ? seder.hebrew : seder.id}
+              <span className={cx("pe-1 text-[11px] font-medium tracking-wide text-ink-soft uppercase", i18n.facts === "he" && "font-hebrew")}>
+                {i18n.facts === "he" ? seder.hebrew : seder.id}
               </span>
               {MASECHTOS.filter((masechta) => masechta.seder === seder.id).map((masechta) => (
                 <MasechtaChip
@@ -108,7 +108,7 @@ export function DafPicker({
       <div className="mt-4 flex items-baseline justify-between gap-3">
         <h3 className="font-display text-2xl">
           <span className="font-hebrew text-wine">{viewed.hebrew}</span>
-          {i18n.lang === "en" ? <span className="text-ink"> {viewed.name}</span> : null}
+          {i18n.facts === "en" ? <span className="text-ink"> {viewed.name}</span> : null}
         </h3>
         <p className="text-sm text-ink-soft">{status}</p>
       </div>
@@ -125,10 +125,11 @@ export function DafPicker({
               id={`daf-${daf.index}`}
               type="button"
               aria-current={current ? "step" : undefined}
-              aria-label={i18n.t("setDaf", { name: `${i18n.name(daf)} ${i18n.dafNumber(daf.daf)}${i18n.amud("a")}` })}
+              aria-label={i18n.t("setDaf", { name: `${i18n.name(daf)} ${i18n.dafNumber(daf.daf)}${i18n.facts === "he" ? " " : ""}${i18n.amud("a")}` })}
               onClick={() => onPlace(daf)}
               className={cx(
-                "aspect-square rounded-xl text-sm tabular-nums transition",
+                "aspect-square rounded-xl text-sm transition",
+                i18n.facts === "he" ? "font-hebrew" : "tabular-nums",
                 current && "bg-wine text-paper shadow-[0_8px_16px_-10px_rgba(125,36,50,0.9)]",
                 done && !current && "bg-moss/15 text-moss",
                 !done && !current && "bg-parchment text-ink hover:bg-line",
@@ -138,7 +139,7 @@ export function DafPicker({
               {current && currentAmud === "b" ? (
                 <>
                   {i18n.dafNumber(daf.daf)}
-                  <span className={i18n.lang === "he" ? "ms-0.5 text-[10px]" : "text-[10px]"}>{i18n.amud("b")}</span>
+                  <span className={i18n.facts === "he" ? "ms-0.5 text-[10px]" : "text-[10px]"}>{i18n.amud("b")}</span>
                 </>
               ) : (
                 i18n.dafNumber(daf.daf)
@@ -187,7 +188,7 @@ function MasechtaChip({
       className={cx(
         "rounded-full px-3 py-1.5 text-sm whitespace-nowrap transition",
         active ? "bg-ink text-paper" : "bg-parchment text-ink hover:bg-line",
-        i18n.lang === "he" && "font-hebrew",
+        i18n.facts === "he" && "font-hebrew",
       )}
     >
       {here ? <span className="me-1.5 inline-block h-1.5 w-1.5 rounded-full bg-gold align-middle" /> : null}

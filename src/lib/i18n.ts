@@ -15,6 +15,7 @@ const STRINGS = {
     language: "Language",
     languageEnglish: "English",
     languageHebrew: "עברית",
+    languageYeshiva: "בני ישיבה",
     languageHint: "English, with Hebrew for the masechta you’re learning.",
     order: "Masechta order",
     orderStandard: "Daf Yomi",
@@ -35,6 +36,9 @@ const STRINGS = {
     didToday: "I did today",
     missedThis: "I missed this",
     madeUp: "Made up",
+    complete: "Done",
+    completeAmud: "Mark {name} done",
+    markedAmud: "{name} is done.",
     countedDone: "Counted as done. Mark it if you still owe it. Later days stay on the schedule.",
     onMakeup: "On your makeup list. The calendar did not move.",
     markedMissed: "{range} is saved to make up. The calendar stays on schedule.",
@@ -149,6 +153,7 @@ const STRINGS = {
     language: "שפה",
     languageEnglish: "English",
     languageHebrew: "עברית",
+    languageYeshiva: "בני ישיבה",
     languageHint: "עברית לכל הממשק. מספרי הדפים באותיות.",
     order: "סדר המסכתות",
     orderStandard: "דף יומי",
@@ -169,6 +174,9 @@ const STRINGS = {
     didToday: "למדתי היום",
     missedThis: "החסרתי את זה",
     madeUp: "הושלם",
+    complete: "גמור",
+    completeAmud: "סמן את {name} כגמור",
+    markedAmud: "{name} הושלם.",
     countedDone: "נחשב כגמור. אפשר לסמן אם עוד חייבים אותו. הימים הבאים נשארים במקום.",
     onMakeup: "ברשימת ההשלמה. הלוח לא זז.",
     markedMissed: "{range} נשמר להשלמה. הלוח נשאר לפי הסדר.",
@@ -303,15 +311,18 @@ function fill(template: string, vars?: Record<string, string | number>): string 
 }
 
 export function makeI18n(language: string) {
-  const lang = language === "he" ? "he" : "en";
+  const choice = language === "he" || language === "yeshiva" ? language : "en";
+  const lang = choice === "he" ? "he" : "en";
+  const facts = choice === "en" ? "en" : "he";
   const dict: Messages = STRINGS[lang];
   return {
     lang,
+    facts,
     dir: lang === "he" ? "rtl" : "ltr",
     locale: lang === "he" ? "he-IL" : "en-US",
-    weekdays: lang === "he" ? HEBREW_WEEKDAYS : WEEKDAYS,
+    weekdays: facts === "he" ? HEBREW_WEEKDAYS : WEEKDAYS,
     weekdayName(day: number) {
-      const names = lang === "he" ? HEBREW_WEEKDAY_NAMES : ENGLISH_WEEKDAY_NAMES;
+      const names = facts === "he" ? HEBREW_WEEKDAY_NAMES : ENGLISH_WEEKDAY_NAMES;
       return names[day] ?? "";
     },
     t(key: keyof Messages, vars?: Record<string, string | number>) {
@@ -319,23 +330,23 @@ export function makeI18n(language: string) {
     },
     name(entity: { name: string; hebrew: string } | null | undefined) {
       if (!entity) return "";
-      return lang === "he" ? entity.hebrew : entity.name;
+      return facts === "he" ? entity.hebrew : entity.name;
     },
     short(entity: { shortName: string; hebrew: string } | null | undefined) {
       if (!entity) return "";
-      return lang === "he" ? entity.hebrew : entity.shortName;
+      return facts === "he" ? entity.hebrew : entity.shortName;
     },
     note(entity: { note?: string | { en?: string; he?: string } | null } | null | undefined) {
       if (!entity?.note) return null;
       if (typeof entity.note === "string") return entity.note;
-      return entity.note[lang] ?? entity.note.en ?? null;
+      return entity.note[facts] ?? entity.note.en ?? null;
     },
     amud(letter: string) {
-      if (lang !== "he") return letter;
+      if (facts !== "he") return letter;
       return letter === "a" ? "א" : "ב";
     },
     dafNumber(value: number) {
-      return lang === "he" ? hebrewNumeral(value) : String(value);
+      return facts === "he" ? hebrewNumeral(value) : String(value);
     },
     dafWord(count: number) {
       const amount = Math.round(Number(count) * 2) / 2;
@@ -350,11 +361,11 @@ export function makeI18n(language: string) {
       return lang === "he" ? `מחזור ${number}` : `${ordinal(number)} cycle`;
     },
     label(unit: { name: string; hebrew: string; daf: number; amud: string }) {
-      const number = lang === "he" ? hebrewNumeral(unit.daf) : String(unit.daf);
-      const side = lang === "he" ? (unit.amud === "a" ? "א" : "ב") : unit.amud;
-      return `${lang === "he" ? unit.hebrew : unit.name} ${number}${lang === "he" ? " " : ""}${side}`;
+      const number = facts === "he" ? hebrewNumeral(unit.daf) : String(unit.daf);
+      const side = facts === "he" ? (unit.amud === "a" ? "א" : "ב") : unit.amud;
+      return `${facts === "he" ? unit.hebrew : unit.name} ${number}${facts === "he" ? " " : ""}${side}`;
     },
-    groupOptions: { hebrew: lang === "he" },
+    groupOptions: { hebrew: facts === "he" },
   };
 }
 

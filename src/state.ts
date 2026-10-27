@@ -3,7 +3,7 @@ import type { AmudSide, Place } from "./data/shas.ts";
 
 export const SETTINGS_KEY = "daf-schedule-v1";
 
-export type Language = "en" | "he";
+export type Language = "en" | "he" | "yeshiva";
 export type CalendarView = "month" | "year" | "list";
 
 export type DoneUnit = {
@@ -36,7 +36,7 @@ export type Settings = {
   masechtaOrder: string[] | null;
   calendarView: CalendarView;
   compact: boolean;
-  /** Hebrew calendar labels. Independent of `language`. */
+  /** Hebrew calendar labels. Independent of `language`. Missing means Jewish dates. */
   jewishDates?: boolean;
   /** Study days marked not done. Missing means the day was counted as done. */
   missed?: MissedDay[];
@@ -49,6 +49,7 @@ const defaultSettings: Settings = {
   studyDays: [0, 1, 2, 3, 4, 5, 6],
   doneToday: null,
   language: "en",
+  jewishDates: true,
   customOrder: false,
   masechtaOrder: null,
   calendarView: "month",
@@ -65,7 +66,13 @@ export function clampPace(pace: unknown): number {
 }
 
 export function sanitizeLanguage(value: unknown): Language {
-  return value === "he" ? "he" : "en";
+  if (value === "he" || value === "yeshiva") return value;
+  return "en";
+}
+
+/** English keeps English names and dates. Hebrew and בני ישיבה use Hebrew for those facts. */
+export function factsLanguage(language: Language): "en" | "he" {
+  return language === "en" ? "en" : "he";
 }
 
 export function sanitizeCalendarView(value: unknown): CalendarView {

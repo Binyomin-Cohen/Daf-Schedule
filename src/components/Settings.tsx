@@ -77,7 +77,7 @@ export function Settings({
   }
 
   return (
-    <div ref={rootRef} className="flex items-center justify-end gap-2">
+    <div ref={rootRef} className="flex flex-wrap items-center justify-end gap-2">
       <div className="inline-flex rounded-full bg-paper p-0.5 ring-1 ring-ink/10" role="group" aria-label={i18n.t("language")}>
         <button
           type="button"
@@ -94,6 +94,14 @@ export function Settings({
           onClick={() => onLanguage("he")}
         >
           {i18n.t("languageHebrew")}
+        </button>
+        <button
+          type="button"
+          aria-pressed={language === "yeshiva"}
+          className={cx("rounded-full px-3 py-1 font-hebrew text-sm", language === "yeshiva" ? "bg-ink text-paper" : "text-ink")}
+          onClick={() => onLanguage("yeshiva")}
+        >
+          {i18n.t("languageYeshiva")}
         </button>
       </div>
 
@@ -233,7 +241,7 @@ export function Settings({
                           ⋮⋮
                         </span>
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: masechta.color }} />
-                        <span className={cx("min-w-0 flex-1 truncate text-sm", i18n.lang === "he" && "font-hebrew")}>{label}</span>
+                        <span className={cx("min-w-0 flex-1 truncate text-sm", i18n.facts === "he" && "font-hebrew")}>{label}</span>
                         {here ? <span className="text-[11px] font-medium tracking-wide text-wine uppercase">{i18n.t("now")}</span> : null}
                         <span className="inline-flex" dir="ltr">
                           <button

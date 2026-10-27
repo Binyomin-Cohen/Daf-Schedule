@@ -31,7 +31,7 @@ import {
   toISODate,
 } from "./lib/plan.ts";
 import { officialOn } from "./lib/official.ts";
-import { clampPace, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, sanitizeMissed, settingsAtom, type CalendarView, type DoneToday, type DoneUnit, type Language, type MissedDay } from "./state.ts";
+import { clampPace, factsLanguage, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, sanitizeMissed, settingsAtom, type CalendarView, type DoneToday, type DoneUnit, type Language, type MissedDay } from "./state.ts";
 
 type DafYomiPayload = {
   current_daf: { key: string; daf: number; masechta?: string };
@@ -106,13 +106,16 @@ export default function App() {
   const today = useToday();
   const todayIso = toISODate(today);
   const [selected, setSelected] = useState(today);
-  const [month, setMonth] = useState(() => (settings.jewishDates === true ? hebrewMonthStart(today) : monthStart(today)));
+  const jewishDates = settings.jewishDates !== false;
+  const [month, setMonth] = useState(() => (jewishDates ? hebrewMonthStart(today) : monthStart(today)));
 
   const pace = clampPace(settings.pace);
   const studyDays = useMemo(() => sanitizeDays(settings.studyDays), [settings.studyDays]);
   const language = sanitizeLanguage(settings.language);
-  const jewishDates = settings.jewishDates === true;
-  const dateStyle = useMemo(() => ({ lang: language, jewish: jewishDates }), [language, jewishDates]);
+  const dateStyle = useMemo(
+    () => ({ lang: factsLanguage(language), jewish: jewishDates }),
+    [language, jewishDates],
+  );
   const missed = useMemo(() => sanitizeMissed(settings.missed), [settings.missed]);
   const missedDates = useMemo(() => new Set(missed.map((item) => item.date)), [missed]);
   const calendarView = sanitizeCalendarView(settings.calendarView);
@@ -439,6 +442,21 @@ export default function App() {
     setNotice({ text: i18n.t("markedMadeUp"), undo: true });
   }
 
+  function completeAmud(date: Date, unit: DoneUnit) {
+    const iso = toISODate(date);
+    const amud = findAmud(unit.key, unit.daf, unit.amud);
+    remember();
+    setSettings((current) => ({
+      ...current,
+      missed: sanitizeMissed(current.missed).flatMap((item) => {
+        if (item.date !== iso) return [item];
+        const units = item.units.filter((candidate) => candidate.key !== unit.key || candidate.daf !== unit.daf || candidate.amud !== unit.amud);
+        return units.length ? [{ date: iso, units }] : [];
+      }),
+    }));
+    setNotice({ text: i18n.t("markedAmud", { name: amud ? i18n.label(amud) : `${unit.daf}${unit.amud}` }), undo: true });
+  }
+
   function toggleStudyDay(day: number) {
     if (studyDays.includes(day) && studyDays.length === 1) {
       setNotice({ text: i18n.t("keepOneDay") });
@@ -562,7 +580,7 @@ export default function App() {
       </div>
 
       <div className="mt-4">
-        <MakeupList items={missed} compact={compact} dates={dateStyle} onMadeUp={(iso) => markMadeUp(parseISODate(iso))} />
+        <MakeupList items={missed} compact={compact} dates={dateStyle} onComplete={(iso, unit) => completeAmud(parseISODate(iso), unit)} />
       </div>
 
       <div className="mt-4">
@@ -772,7 +790,9 @@ function TodayCard({
       {lead ? (
         <>
           <h2 className={compact ? "mt-1 font-hebrew text-3xl leading-none" : "mt-3 font-hebrew text-5xl leading-none sm:text-6xl"}>{lead.hebrew}</h2>
-          <p className={compact ? "mt-1 font-display text-xl tracking-tight" : "mt-3 font-display text-3xl tracking-tight"}>
+          <p className={compact
+            ? `mt-1 text-xl tracking-tight ${i18n.facts === "he" ? "font-hebrew" : "font-display"}`
+            : `mt-3 text-3xl tracking-tight ${i18n.facts === "he" ? "font-hebrew" : "font-display"}`}>
             {groups.map((group) => formatGroup(group, i18n.groupOptions)).join(" · ")}
           </p>
           {lede ? <p className={compact ? "mt-1 text-sm text-paper/80" : "mt-2 text-sm text-paper/80"}>{lede}</p> : null}
@@ -788,11 +808,11 @@ function TodayCard({
             return (
               <div key={index} className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2">
                 <button type="button" className="text-start" onClick={() => onPlace(unit)} aria-label={i18n.t("setAmud", { name: i18n.label(unit) })}>
-                  <span className="block font-display text-3xl leading-none">
+                  <span className={`block text-3xl leading-none ${i18n.facts === "he" ? "font-hebrew" : "font-display"}`}>
                     {i18n.dafNumber(unit.daf)}
-                    <span className={i18n.lang === "he" ? "ms-1 text-lg" : "text-lg"}>{i18n.amud(unit.amud)}</span>
+                    <span className={i18n.facts === "he" ? "ms-1 text-lg" : "text-lg"}>{i18n.amud(unit.amud)}</span>
                   </span>
-                  <span className="mt-1 block text-[11px] tracking-wide text-paper/75 uppercase">{i18n.short(unit)}</span>
+                  <span className={`mt-1 block text-[11px] tracking-wide text-paper/75 uppercase ${i18n.facts === "he" ? "font-hebrew" : ""}`}>{i18n.short(unit)}</span>
                 </button>
                 <AmudLinks daf={unit} amud={unit.amud} tone="wine" />
               </div>
@@ -805,7 +825,7 @@ function TodayCard({
         <ul className={compact ? "mt-2 space-y-1 text-sm text-paper/80" : "mt-4 space-y-1 text-sm text-paper/80"}>
           {notes.map((daf) => (
             <li key={daf.index}>
-              {i18n.name(daf)} {i18n.dafNumber(daf.daf)}: {i18n.note(daf)}
+              <span className={i18n.facts === "he" ? "font-hebrew" : undefined}>{i18n.name(daf)} {i18n.dafNumber(daf.daf)}: {i18n.note(daf)}</span>
             </li>
           ))}
         </ul>
@@ -919,10 +939,10 @@ function Controls({
               type="button"
               aria-pressed={on}
               aria-label={i18n.t(on ? "removeDay" : "addDay", { day: i18n.weekdayName(day) })}
-              className={`grid h-9 min-w-9 place-items-center rounded-full px-2 text-xs font-medium ${on ? "bg-moss text-paper" : "bg-parchment text-ink-soft"}`}
+              className={`grid h-9 min-w-9 place-items-center rounded-full px-2 text-xs font-medium ${i18n.facts === "he" ? "font-hebrew" : ""} ${on ? "bg-moss text-paper" : "bg-parchment text-ink-soft"}`}
               onClick={() => onToggleDay(day)}
             >
-              {i18n.lang === "he" ? label : label.slice(0, 2)}
+              {i18n.facts === "he" ? label : label.slice(0, 2)}
             </button>
           );
         })}

@@ -84,7 +84,7 @@ export function Calendar({
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-medium tracking-[0.16em] text-ink-soft uppercase">{i18n.t("calendar")}</p>
-          <h2 className={cx("font-display text-3xl tracking-tight sm:text-4xl", dates.lang === "he" && dates.jewish && "font-hebrew")}>{heading}</h2>
+          <h2 className={cx("text-3xl tracking-tight sm:text-4xl", dates.lang === "he" ? "font-hebrew" : "font-display")}>{heading}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-full bg-parchment p-1" role="group" aria-label={i18n.t("calendarView")}>
@@ -207,7 +207,7 @@ function MonthGrid({
   return (
     <div className="grid grid-cols-7">
       {i18n.weekdays.map((day) => (
-        <div key={day} className="px-1 pb-2 text-[11px] font-medium tracking-wide text-ink-soft uppercase">
+        <div key={day} className={cx("px-1 pb-2 text-[11px] font-medium tracking-wide text-ink-soft uppercase", i18n.facts === "he" && "font-hebrew")}>
           {day}
         </div>
       ))}
@@ -258,7 +258,7 @@ function MonthGrid({
                 {groups.slice(0, 2).map((group) => (
                   <span key={`${group.key}-${group.startAmudIndex}`} className="mt-0.5 flex items-start gap-1 text-[10px] leading-tight text-ink sm:text-[11px]">
                     <span className="mt-1 hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block" style={{ background: group.color }} />
-                    <span className="line-clamp-2">{formatGroup(group, { ...i18n.groupOptions, short: true })}</span>
+                    <span className={cx("line-clamp-2", i18n.facts === "he" && "font-hebrew")}>{formatGroup(group, { ...i18n.groupOptions, short: true })}</span>
                   </span>
                 ))}
                 {groups.length > 2 ? (
@@ -310,10 +310,10 @@ function YearGrid({
         const label = formatScheduleMonthName(monthStartDate, dates);
         return (
           <div key={toISODate(monthStartDate)}>
-            <h3 className={cx("mb-1 text-sm font-medium", dates.lang === "he" && dates.jewish && "font-hebrew")}>{label}</h3>
+            <h3 className={cx("mb-1 text-sm font-medium", dates.lang === "he" && "font-hebrew")}>{label}</h3>
             <div className="grid grid-cols-7 gap-px">
               {i18n.weekdays.map((day) => (
-                <div key={`${toISODate(monthStartDate)}-${day}`} className="pb-0.5 text-center text-[9px] text-ink-soft">
+                <div key={`${toISODate(monthStartDate)}-${day}`} className={cx("pb-0.5 text-center text-[9px] text-ink-soft", i18n.facts === "he" && "font-hebrew")}>
                   {day.replace("׳", "").slice(0, 1)}
                 </div>
               ))}
@@ -410,7 +410,7 @@ function ListView({
     <div className="max-h-[32rem] overflow-y-auto rounded-2xl">
       {groups.map((group) => (
         <div key={group.key}>
-          <h3 className="sticky top-0 bg-paper/95 py-2 text-xs font-medium tracking-[0.14em] text-ink-soft uppercase backdrop-blur-sm">
+          <h3 className={cx("sticky top-0 bg-paper/95 py-2 text-xs font-medium tracking-[0.14em] text-ink-soft uppercase backdrop-blur-sm", dates.lang === "he" && "font-hebrew")}>
             {group.label}
           </h3>
           <div className="divide-y divide-line">
@@ -433,8 +433,8 @@ function ListView({
                   <span className={cx("w-8 shrink-0", dates.jewish ? "" : "tabular-nums", dates.lang === "he" && dates.jewish && "font-hebrew", isToday ? "font-medium text-wine" : "text-ink")}>
                     {formatScheduleDay(row.date, dates)}
                   </span>
-                  <span className="w-10 shrink-0 text-xs text-ink-soft">{i18n.weekdays[row.date.getDay()]}</span>
-                  <span className="min-w-0 flex-1 truncate">{range}</span>
+                  <span className={cx("w-10 shrink-0 text-xs text-ink-soft", i18n.facts === "he" && "font-hebrew")}>{i18n.weekdays[row.date.getDay()]}</span>
+                  <span className={cx("min-w-0 flex-1 truncate", i18n.facts === "he" && "font-hebrew")}>{range}</span>
                   {missedDates.has(row.iso) ? (
                     <span className="shrink-0 text-[10px] font-medium tracking-wide text-moss uppercase">{i18n.t("makeup")}</span>
                   ) : null}
@@ -496,7 +496,7 @@ function DayDetail({
   } else if (selectedPast && session) {
     body = (
       <div>
-        <p className="font-display text-2xl tracking-tight">{formatIndices(session.indices, i18n.groupOptions)}</p>
+        <p className={cx("text-2xl tracking-tight", i18n.facts === "he" ? "font-hebrew" : "font-display")}>{formatIndices(session.indices, i18n.groupOptions)}</p>
         <p className="mt-1 text-sm text-ink-soft">{missed ? i18n.t("onMakeup") : i18n.t("countedDone")}</p>
         <button
           type="button"
@@ -520,7 +520,7 @@ function DayDetail({
     }
     body = (
       <div>
-        <p className="font-display text-2xl tracking-tight">{formatIndices(session.indices, i18n.groupOptions)}</p>
+        <p className={cx("text-2xl tracking-tight", i18n.facts === "he" ? "font-hebrew" : "font-display")}>{formatIndices(session.indices, i18n.groupOptions)}</p>
         <p className="mt-1 text-sm text-ink-soft">{isToday ? i18n.t("clickAmudToday") : i18n.t("clickAmudLater")}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {session.indices.map((index) => {
@@ -528,11 +528,11 @@ function DayDetail({
             return (
               <div key={index} className="flex items-center gap-2 rounded-2xl bg-paper px-3 py-2">
                 <button type="button" className="text-start" onClick={() => onPlace(unit)} aria-label={i18n.t("setAmud", { name: i18n.label(unit) })}>
-                  <span className="block font-display text-2xl leading-none">
+                  <span className={cx("block text-2xl leading-none", i18n.facts === "he" ? "font-hebrew" : "font-display")}>
                     {i18n.dafNumber(unit.daf)}
-                    <span className={i18n.lang === "he" ? "ms-1 text-base" : "text-base"}>{i18n.amud(unit.amud)}</span>
+                    <span className={i18n.facts === "he" ? "ms-1 text-base" : "text-base"}>{i18n.amud(unit.amud)}</span>
                   </span>
-                  <span className="mt-1 block text-[11px] text-ink-soft">
+                  <span className={cx("mt-1 block text-[11px] text-ink-soft", i18n.facts === "he" && "font-hebrew")}>
                     {i18n.short(unit)} · {i18n.t("setAsNext")}
                   </span>
                 </button>
@@ -545,7 +545,7 @@ function DayDetail({
           <ul className="mt-3 space-y-1 text-sm text-ink-soft">
             {noted.map((unit) => (
               <li key={unit.index}>
-                {i18n.name(unit)} {i18n.dafNumber(unit.daf)}: {i18n.note(unit)}
+                <span className={i18n.facts === "he" ? "font-hebrew" : undefined}>{i18n.name(unit)} {i18n.dafNumber(unit.daf)}: {i18n.note(unit)}</span>
               </li>
             ))}
           </ul>

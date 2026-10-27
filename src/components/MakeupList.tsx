@@ -1,20 +1,24 @@
-import { AMUDIM, findAmud } from "../data/shas.ts";
+import { findAmud } from "../data/shas.ts";
 import { useI18n } from "../i18n.tsx";
 import { formatScheduleWhen, type DateStyle } from "../lib/dates.ts";
-import { formatIndices, parseISODate } from "../lib/plan.ts";
-import type { MissedDay } from "../state.ts";
+import { parseISODate } from "../lib/plan.ts";
+import type { DoneUnit, MissedDay } from "../state.ts";
 import { AmudLinks } from "./AmudLinks.tsx";
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
 
 export function MakeupList({
   items,
   compact,
   dates,
-  onMadeUp,
+  onComplete,
 }: {
   items: MissedDay[];
   compact: boolean;
   dates: DateStyle;
-  onMadeUp: (date: string) => void;
+  onComplete: (date: string, unit: DoneUnit) => void;
 }) {
   const i18n = useI18n();
 
@@ -28,38 +32,32 @@ export function MakeupList({
       ) : (
         <>
           <p className="mt-1 text-sm text-ink-soft">{i18n.t("makeupHelp")}</p>
-          <ul className="mt-3 divide-y divide-line">
-            {items.map((item) => {
-              const indices = item.units.flatMap((unit) => {
-                const amud = findAmud(unit.key, unit.daf, unit.amud);
-                return amud ? [amud.amudIndex] : [];
-              });
-              const range = indices.length ? formatIndices(indices, i18n.groupOptions) : "";
-              return (
-                <li key={item.date} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm text-ink-soft">{formatScheduleWhen(parseISODate(item.date), dates)}</p>
-                    <p className="font-display text-xl tracking-tight">{range}</p>
-                    {compact ? null : (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {indices.map((index) => {
-                          const unit = AMUDIM[index];
-                          if (!unit) return null;
-                          return <AmudLinks key={index} daf={unit} amud={unit.amud} />;
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-paper"
-                    onClick={() => onMadeUp(item.date)}
-                  >
-                    {i18n.t("madeUp")}
-                  </button>
+          <ul className="mt-2 divide-y divide-line">
+            {items.map((item) => (
+                <li key={item.date} className="py-2">
+                  <p className={cx("text-xs text-ink-soft", dates.lang === "he" && "font-hebrew")}>{formatScheduleWhen(parseISODate(item.date), dates)}</p>
+                  <ul className="mt-1">
+                    {item.units.map((unit) => {
+                      const amud = findAmud(unit.key, unit.daf, unit.amud);
+                      const name = amud ? i18n.label(amud) : `${unit.key} ${unit.daf}${unit.amud}`;
+                      return (
+                        <li key={`${unit.key}:${unit.daf}:${unit.amud}`} className="flex items-center gap-2 py-0.5">
+                          <p className={cx("min-w-0 truncate text-base tracking-tight", i18n.facts === "he" ? "font-hebrew" : "font-display")}>{name}</p>
+                          {amud ? <span className="shrink-0"><AmudLinks daf={amud} amud={amud.amud} /></span> : null}
+                          <button
+                            type="button"
+                            className="ms-auto shrink-0 rounded-full bg-ink px-2.5 py-1 text-xs font-medium text-paper"
+                            aria-label={i18n.t("completeAmud", { name })}
+                            onClick={() => onComplete(item.date, unit)}
+                          >
+                            {i18n.t("complete")}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </li>
-              );
-            })}
+              ))}
           </ul>
         </>
       )}
