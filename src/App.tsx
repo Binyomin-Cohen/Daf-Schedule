@@ -6,7 +6,7 @@ import { MakeupList } from "./components/MakeupList.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { AmudLinks } from "./components/AmudLinks.tsx";
 import { I18nProvider, useI18n } from "./i18n.tsx";
-import { AMUDIM, AMUD_TOTAL, TOTAL, findAmud, findDaf, isCompletePlace, masechtaByKey, resolvePlace, type Amud, type Daf, type Masechta, type Place } from "./data/shas.ts";
+import { AMUDIM, AMUD_TOTAL, TOTAL, findAmud, findDaf, isCompletePlace, masechtaByKey, resolvePlace, type Amud, type AmudSide, type Daf, type Masechta, type Place } from "./data/shas.ts";
 import { makeI18n, type I18n } from "./lib/i18n.ts";
 import { isStandardOrder, sanitizeOrder, studyIndex } from "./lib/order.ts";
 import { formatScheduleFull, formatScheduleWhen, hebrewMonthStart } from "./lib/dates.ts";
@@ -31,7 +31,7 @@ import {
   toISODate,
 } from "./lib/plan.ts";
 import { officialOn } from "./lib/official.ts";
-import { clampPace, factsLanguage, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, sanitizeMissed, settingsAtom, type CalendarView, type DoneToday, type DoneUnit, type Language, type MissedDay } from "./state.ts";
+import { ADDED_MISSED_DATE, clampPace, factsLanguage, sanitizeAnchoredOn, sanitizeCalendarView, sanitizeDays, sanitizeLanguage, sanitizeMissed, settingsAtom, type CalendarView, type DoneToday, type DoneUnit, type Language, type MissedDay } from "./state.ts";
 
 type DafYomiPayload = {
   current_daf: { key: string; daf: number; masechta?: string };
@@ -187,17 +187,17 @@ export default function App() {
     }),
     [anchorIndex, pace, studyDays, anchoredOnIso, today, sequence],
   );
-  const historySession = useMemo(() => {
-    if (toISODate(selected) >= todayIso) return null;
-    return sessionOnDate({
+  const pastPlan = useMemo(
+    () => buildPlan({
       position: anchorIndex,
       pace,
       studyDays,
-      anchoredOn: parseISODate(anchoredOnIso),
-      date: selected,
+      start: parseISODate(anchoredOnIso),
       sequence,
-    });
-  }, [selected, todayIso, anchorIndex, pace, studyDays, anchoredOnIso, sequence]);
+      until: today,
+    }),
+    [anchorIndex, pace, studyDays, anchoredOnIso, sequence, today],
+  );
 
   const plan = useMemo(
     () =>
@@ -432,6 +432,44 @@ export default function App() {
     setNotice({ text: i18n.t("markedMissed", { range: formatIndices(session.indices, i18n.groupOptions) }), undo: true });
   }
 
+  function missAmud(date: Date, unit: DoneUnit) {
+    const iso = toISODate(date);
+    if (iso > todayIso) return;
+    const session = iso < todayIso ? pastPlan.byDate.get(iso) ?? null : sessionOnDate({
+      position: anchorIndex,
+      pace,
+      studyDays,
+      anchoredOn: anchoredOnDate,
+      date,
+      sequence,
+    });
+    const allowed = session?.indices.some((index) => {
+      const amud = AMUDIM[index];
+      return amud?.key === unit.key && amud.daf === unit.daf && amud.amud === unit.amud;
+    }) ?? false;
+    if (!allowed) {
+      setNotice({ text: i18n.t("nothingToMiss") });
+      return;
+    }
+    const already = sanitizeMissed(settings.missed).some((item) => item.date === iso && item.units.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud));
+    if (already) return;
+    const amud = findAmud(unit.key, unit.daf, unit.amud);
+    remember();
+    setSettings((current) => {
+      const missed = sanitizeMissed(current.missed);
+      const existing = missed.find((item) => item.date === iso);
+      const units = existing?.units ?? [];
+      if (units.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud)) return current;
+      return {
+        ...current,
+        missed: [...missed.filter((item) => item.date !== iso), { date: iso, units: [...units, { key: unit.key, daf: unit.daf, amud: unit.amud }] }]
+          .sort((left, right) => left.date.localeCompare(right.date)),
+        doneToday: iso === todayIso ? null : current.doneToday,
+      };
+    });
+    setNotice({ text: i18n.t("markedMissedAmud", { name: amud ? i18n.label(amud) : `${unit.daf}${unit.amud}` }), undo: true });
+  }
+
   function markMadeUp(date: Date) {
     const iso = toISODate(date);
     remember();
@@ -455,6 +493,35 @@ export default function App() {
       }),
     }));
     setNotice({ text: i18n.t("markedAmud", { name: amud ? i18n.label(amud) : `${unit.daf}${unit.amud}` }), undo: true });
+  }
+
+  function addMissedDaf(key: string, dafNumber: number) {
+    const daf = findDaf(key, dafNumber);
+    if (!daf) return;
+    const sides: AmudSide[] = daf.endAmud === "a" ? ["a"] : ["a", "b"];
+    const incoming: DoneUnit[] = sides.map((amud) => ({ key: daf.key, daf: daf.daf, amud }));
+    const name = `${i18n.name(daf)} ${i18n.dafNumber(daf.daf)}`;
+    const saved = sanitizeMissed(settings.missed).find((item) => item.date === ADDED_MISSED_DATE)?.units ?? [];
+    const fresh = incoming.filter((unit) => !saved.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud));
+    if (!fresh.length) {
+      setNotice({ text: i18n.t("addedAlready", { name }) });
+      return;
+    }
+    remember();
+    setSettings((current) => {
+      const missed = sanitizeMissed(current.missed);
+      const units = missed.find((item) => item.date === ADDED_MISSED_DATE)?.units ?? [];
+      const next = [...units];
+      for (const unit of fresh) {
+        if (!next.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud)) next.push(unit);
+      }
+      return {
+        ...current,
+        missed: [...missed.filter((item) => item.date !== ADDED_MISSED_DATE), { date: ADDED_MISSED_DATE, units: next }]
+          .sort((left, right) => left.date.localeCompare(right.date)),
+      };
+    });
+    setNotice({ text: i18n.t("addedDaf", { name }), undo: true });
   }
 
   function toggleStudyDay(day: number) {
@@ -542,6 +609,7 @@ export default function App() {
       )}
 
       <div className={`${compact ? "mt-4" : "mt-8 "}grid items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]`}>
+        <div className="grid gap-4">
         <TodayCard
           complete={complete}
           caughtUp={caughtUp}
@@ -561,6 +629,17 @@ export default function App() {
           onMiss={() => markMissed(today)}
           onDid={() => markMadeUp(today)}
         />
+        <MakeupList
+          items={missed}
+          past={pastPlan.sessions}
+          compact={compact}
+          dates={dateStyle}
+          suggestKey={active?.key ?? "berachos"}
+          onComplete={(iso, unit) => completeAmud(parseISODate(iso), unit)}
+          onMiss={(iso, unit) => missAmud(parseISODate(iso), unit)}
+          onAddDaf={addMissedDaf}
+        />
+        </div>
         <Controls
           pace={pace}
           onPace={setPace}
@@ -577,10 +656,6 @@ export default function App() {
           sameAsOfficial={Boolean(officialAmud && active && officialAmud.amudIndex === active.amudIndex)}
           dates={dateStyle}
         />
-      </div>
-
-      <div className="mt-4">
-        <MakeupList items={missed} compact={compact} dates={dateStyle} onComplete={(iso, unit) => completeAmud(parseISODate(iso), unit)} />
       </div>
 
       <div className="mt-4">
@@ -615,9 +690,12 @@ export default function App() {
           onView={setCalendarView}
           dates={dateStyle}
           missedDates={missedDates}
-          historySession={historySession}
+          missedDays={missed}
+          pastPlan={pastPlan}
           onMiss={markMissed}
+          onMissAmud={missAmud}
           onMadeUp={markMadeUp}
+          onCompleteAmud={(date, unit) => completeAmud(date, unit)}
         />
       </div>
 

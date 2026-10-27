@@ -3,6 +3,9 @@ import type { AmudSide, Place } from "./data/shas.ts";
 
 export const SETTINGS_KEY = "daf-schedule-v1";
 
+/** Dapim added by hand, not tied to a study day. */
+export const ADDED_MISSED_DATE = "9999-12-31";
+
 export type Language = "en" | "he" | "yeshiva";
 export type CalendarView = "month" | "year" | "list";
 
