@@ -3,7 +3,7 @@ import { AMUDIM, type Amud } from "../data/shas.ts";
 import { useI18n } from "../i18n.tsx";
 import { addHebrewMonths, addHebrewYears, formatScheduleDay, formatScheduleLong, formatScheduleMonth, formatScheduleMonthName, formatScheduleWhen, formatScheduleYear, hebrewMonthCells, hebrewMonthStart, hebrewMonths, hebrewYearNumber, tishreiOf, type DateStyle } from "../lib/dates.ts";
 import { addDays, formatGroup, formatIndices, groupAmudim, monthCells, toISODate, type Plan, type Session } from "../lib/plan.ts";
-import type { CalendarView, DoneUnit, MissedDay } from "../state.ts";
+import type { CalendarView } from "../state.ts";
 import { AmudLinks } from "./AmudLinks.tsx";
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -26,12 +26,8 @@ export function Calendar({
   onView,
   dates,
   missedDates,
-  missedDays,
   pastPlan,
-  onMiss,
-  onMissAmud,
   onMadeUp,
-  onCompleteAmud,
 }: {
   plan: Plan;
   today: Date;
@@ -46,19 +42,14 @@ export function Calendar({
   onView: (view: CalendarView) => void;
   dates: DateStyle;
   missedDates: ReadonlySet<string>;
-  missedDays: MissedDay[];
   pastPlan: Plan;
-  onMiss: (date: Date) => void;
-  onMissAmud: (date: Date, unit: DoneUnit) => void;
   onMadeUp: (date: Date) => void;
-  onCompleteAmud: (date: Date, unit: DoneUnit) => void;
 }) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
   const selectedIso = toISODate(selected);
   const selectedPast = selectedIso < todayIso;
   const session = (selectedPast ? pastPlan : plan).byDate.get(selectedIso) ?? null;
-  const owed = missedDays.find((item) => item.date === selectedIso)?.units ?? [];
   const yearMode = view === "year" || view === "list";
   const heading = yearMode ? formatScheduleYear(month, dates) : formatScheduleMonth(month, dates);
 
@@ -143,17 +134,11 @@ export function Calendar({
           anchor={month}
           dates={dates}
           plan={plan}
-          pastPlan={pastPlan}
           today={today}
           selectedIso={selectedIso}
           caughtUp={caughtUp}
           missedDates={missedDates}
-          missedDays={missedDays}
           onSelect={selectDate}
-          onMiss={onMiss}
-          onMissAmud={onMissAmud}
-          onMadeUp={onMadeUp}
-          onCompleteAmud={onCompleteAmud}
         />
       ) : null}
       {view === "month" ? (
@@ -184,7 +169,7 @@ export function Calendar({
         <span>{i18n.t("legendOff")}</span>
       </div>
 
-      {selectedIso === todayIso || (view === "list" && selectedPast) ? null : (
+      {selectedIso === todayIso ? null : (
         <DayDetail
           selected={selected}
           session={session}
@@ -194,12 +179,8 @@ export function Calendar({
           studyDays={studyDays}
           dates={dates}
           missed={missedDates.has(selectedIso)}
-          owed={owed}
           onPlace={onPlace}
-          onMiss={() => onMiss(selected)}
-          onMissAmud={(unit) => onMissAmud(selected, unit)}
           onMadeUp={() => onMadeUp(selected)}
-          onCompleteAmud={(unit) => onCompleteAmud(selected, unit)}
         />
       )}
     </section>
@@ -397,41 +378,30 @@ function ListView({
   anchor,
   dates,
   plan,
-  pastPlan,
   today,
   selectedIso,
   caughtUp,
   missedDates,
-  missedDays,
   onSelect,
-  onMiss,
-  onMissAmud,
-  onMadeUp,
-  onCompleteAmud,
 }: {
   anchor: Date;
   dates: DateStyle;
   plan: Plan;
-  pastPlan: Plan;
   today: Date;
   selectedIso: string;
   caughtUp: boolean;
   missedDates: ReadonlySet<string>;
-  missedDays: MissedDay[];
   onSelect: (date: Date) => void;
-  onMiss: (date: Date) => void;
-  onMissAmud: (date: Date, unit: DoneUnit) => void;
-  onMadeUp: (date: Date) => void;
-  onCompleteAmud: (date: Date, unit: DoneUnit) => void;
 }) {
   const i18n = useI18n();
   const todayIso = toISODate(today);
   const yearStart = dates.jewish ? tishreiOf(hebrewYearNumber(anchor)) : new Date(anchor.getFullYear(), 0, 1);
   const yearEnd = dates.jewish ? addDays(tishreiOf(hebrewYearNumber(anchor) + 1), -1) : new Date(anchor.getFullYear(), 11, 31);
+  const start = today >= yearStart && today <= yearEnd ? today : yearStart;
   const groups: Array<{ key: string; label: string; rows: Array<{ date: Date; iso: string; session: Session | null }> }> = [];
-  for (let cursor = startOf(yearStart); cursor <= yearEnd; cursor = addDays(cursor, 1)) {
+  for (let cursor = startOf(start); cursor <= yearEnd; cursor = addDays(cursor, 1)) {
     const iso = toISODate(cursor);
-    const session = (iso < todayIso ? pastPlan : plan).byDate.get(iso) ?? null;
+    const session = plan.byDate.get(iso) ?? null;
     const doneRow = !session && iso === todayIso && caughtUp;
     if (!session && !doneRow) continue;
     const key = dates.jewish ? formatScheduleMonth(cursor, dates) : `${cursor.getFullYear()}-${cursor.getMonth()}`;
@@ -458,135 +428,38 @@ function ListView({
             {group.rows.map((row) => {
               const selected = row.iso === selectedIso;
               const isToday = row.iso === todayIso;
-              const isPast = row.iso < todayIso;
               const range = row.session ? formatIndices(row.session.indices, { ...i18n.groupOptions, short: true }) : i18n.t("done");
-              const owed = missedDays.find((item) => item.date === row.iso)?.units ?? [];
-              const missed = missedDates.has(row.iso);
               return (
-                <div key={row.iso} className={cx(selected && "bg-[#f8e7e4]")}>
-                  <button
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => onSelect(row.date)}
-                    className={cx(
-                      "flex w-full items-baseline gap-3 py-1.5 text-start text-sm",
-                      !selected && "hover:bg-parchment/70",
-                    )}
-                  >
-                    <span className={cx("w-8 shrink-0", dates.jewish ? "" : "tabular-nums", dates.lang === "he" && dates.jewish && "font-hebrew", isToday ? "font-medium text-wine" : "text-ink")}>
-                      {formatScheduleDay(row.date, dates)}
-                    </span>
-                    <span className={cx("w-10 shrink-0 text-xs text-ink-soft", i18n.facts === "he" && "font-hebrew")}>{i18n.weekdays[row.date.getDay()]}</span>
-                    <span className={cx("min-w-0 flex-1 truncate", i18n.facts === "he" && "font-hebrew")}>{range}</span>
-                    {missed ? (
-                      <span className="shrink-0 text-[10px] font-medium tracking-wide text-moss uppercase">{i18n.t("makeup")}</span>
-                    ) : isPast ? (
-                      <span className="shrink-0 text-[10px] font-medium tracking-wide text-ink-soft uppercase">{i18n.t("markMissedHint")}</span>
-                    ) : null}
-                    {row.session?.siyum ? (
-                      <span className="shrink-0 text-[10px] font-medium tracking-wide text-gold uppercase">
-                        {row.session.siyumHashas ? i18n.t("hashas") : i18n.t("siyum")}
-                      </span>
-                    ) : null}
-                  </button>
-                  {selected && isPast && row.session ? (
-                    <div className="px-1 pb-2">
-                      <OwedAmudRows
-                        indices={row.session.indices}
-                        owed={owed}
-                        onMiss={(unit) => onMissAmud(row.date, unit)}
-                        onComplete={(unit) => onCompleteAmud(row.date, unit)}
-                      />
-                      <WholeDayActions
-                        indices={row.session.indices}
-                        owed={owed}
-                        onMiss={() => onMiss(row.date)}
-                        onMadeUp={() => onMadeUp(row.date)}
-                      />
-                    </div>
+                <button
+                  key={row.iso}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onSelect(row.date)}
+                  className={cx(
+                    "flex w-full items-baseline gap-3 py-1.5 text-start text-sm",
+                    selected && "bg-[#f8e7e4]",
+                    !selected && "hover:bg-parchment/70",
+                  )}
+                >
+                  <span className={cx("w-8 shrink-0", dates.jewish ? "" : "tabular-nums", dates.lang === "he" && dates.jewish && "font-hebrew", isToday ? "font-medium text-wine" : "text-ink")}>
+                    {formatScheduleDay(row.date, dates)}
+                  </span>
+                  <span className={cx("w-10 shrink-0 text-xs text-ink-soft", i18n.facts === "he" && "font-hebrew")}>{i18n.weekdays[row.date.getDay()]}</span>
+                  <span className={cx("min-w-0 flex-1 truncate", i18n.facts === "he" && "font-hebrew")}>{range}</span>
+                  {missedDates.has(row.iso) ? (
+                    <span className="shrink-0 text-[10px] font-medium tracking-wide text-moss uppercase">{i18n.t("makeup")}</span>
                   ) : null}
-                </div>
+                  {row.session?.siyum ? (
+                    <span className="shrink-0 text-[10px] font-medium tracking-wide text-gold uppercase">
+                      {row.session.siyumHashas ? i18n.t("hashas") : i18n.t("siyum")}
+                    </span>
+                  ) : null}
+                </button>
               );
             })}
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function sameUnit(unit: { key: string; daf: number; amud: string }, owed: DoneUnit) {
-  return unit.key === owed.key && unit.daf === owed.daf && unit.amud === owed.amud;
-}
-
-function OwedAmudRows({
-  indices,
-  owed,
-  onMiss,
-  onComplete,
-}: {
-  indices: number[];
-  owed: DoneUnit[];
-  onMiss: (unit: DoneUnit) => void;
-  onComplete: (unit: DoneUnit) => void;
-}) {
-  const i18n = useI18n();
-  return (
-    <ul>
-      {indices.map((index) => {
-        const unit = AMUDIM[index];
-        if (!unit) return null;
-        const name = i18n.label(unit);
-        const marked = owed.some((item) => sameUnit(unit, item));
-        const payload: DoneUnit = { key: unit.key, daf: unit.daf, amud: unit.amud };
-        return (
-          <li key={index} className="flex items-center gap-2 py-0.5">
-            <p className={cx("min-w-0 truncate text-base tracking-tight", i18n.facts === "he" ? "font-hebrew" : "font-display")}>{name}</p>
-            <span className="shrink-0"><AmudLinks daf={unit} amud={unit.amud} /></span>
-            <button
-              type="button"
-              className="ms-auto shrink-0 rounded-full bg-ink px-2.5 py-1 text-xs font-medium text-paper"
-              aria-label={i18n.t(marked ? "completeAmud" : "missAmudLabel", { name })}
-              onClick={() => (marked ? onComplete(payload) : onMiss(payload))}
-            >
-              {i18n.t(marked ? "complete" : "missAmud")}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function WholeDayActions({
-  indices,
-  owed,
-  onMiss,
-  onMadeUp,
-}: {
-  indices: number[];
-  owed: DoneUnit[];
-  onMiss: () => void;
-  onMadeUp: () => void;
-}) {
-  const i18n = useI18n();
-  const allMarked = indices.every((index) => {
-    const unit = AMUDIM[index];
-    return unit ? owed.some((item) => sameUnit(unit, item)) : true;
-  });
-  if (!owed.length && allMarked) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-3">
-      {allMarked ? null : (
-        <button type="button" className="text-sm font-medium text-ink underline decoration-line underline-offset-2" onClick={onMiss}>
-          {i18n.t("missedThis")}
-        </button>
-      )}
-      {owed.length ? (
-        <button type="button" className="text-sm font-medium text-ink-soft underline decoration-line underline-offset-2" onClick={onMadeUp}>
-          {i18n.t("madeUp")}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -604,12 +477,8 @@ function DayDetail({
   studyDays,
   dates,
   missed,
-  owed,
   onPlace,
-  onMiss,
-  onMissAmud,
   onMadeUp,
-  onCompleteAmud,
 }: {
   selected: Date;
   session: Session | null;
@@ -619,12 +488,8 @@ function DayDetail({
   studyDays: number[];
   dates: DateStyle;
   missed: boolean;
-  owed: DoneUnit[];
   onPlace: (unit: Amud) => void;
-  onMiss: () => void;
-  onMissAmud: (unit: DoneUnit) => void;
   onMadeUp: () => void;
-  onCompleteAmud: (unit: DoneUnit) => void;
 }) {
   const i18n = useI18n();
   const iso = toISODate(selected);
@@ -642,10 +507,11 @@ function DayDetail({
       <div>
         <p className={cx("text-2xl tracking-tight", i18n.facts === "he" ? "font-hebrew" : "font-display")}>{formatIndices(session.indices, i18n.groupOptions)}</p>
         <p className="mt-1 text-sm text-ink-soft">{missed ? i18n.t("onMakeup") : i18n.t("countedDone")}</p>
-        <div className="mt-2">
-          <OwedAmudRows indices={session.indices} owed={owed} onMiss={onMissAmud} onComplete={onCompleteAmud} />
-          <WholeDayActions indices={session.indices} owed={owed} onMiss={onMiss} onMadeUp={onMadeUp} />
-        </div>
+        {missed ? (
+          <button type="button" className="mt-3 rounded-full bg-ink px-3 py-1.5 text-sm font-medium text-paper" onClick={onMadeUp}>
+            {i18n.t("madeUp")}
+          </button>
+        ) : null}
       </div>
     );
   } else if (session) {

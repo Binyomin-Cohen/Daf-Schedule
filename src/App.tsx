@@ -432,44 +432,6 @@ export default function App() {
     setNotice({ text: i18n.t("markedMissed", { range: formatIndices(session.indices, i18n.groupOptions) }), undo: true });
   }
 
-  function missAmud(date: Date, unit: DoneUnit) {
-    const iso = toISODate(date);
-    if (iso > todayIso) return;
-    const session = iso < todayIso ? pastPlan.byDate.get(iso) ?? null : sessionOnDate({
-      position: anchorIndex,
-      pace,
-      studyDays,
-      anchoredOn: anchoredOnDate,
-      date,
-      sequence,
-    });
-    const allowed = session?.indices.some((index) => {
-      const amud = AMUDIM[index];
-      return amud?.key === unit.key && amud.daf === unit.daf && amud.amud === unit.amud;
-    }) ?? false;
-    if (!allowed) {
-      setNotice({ text: i18n.t("nothingToMiss") });
-      return;
-    }
-    const already = sanitizeMissed(settings.missed).some((item) => item.date === iso && item.units.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud));
-    if (already) return;
-    const amud = findAmud(unit.key, unit.daf, unit.amud);
-    remember();
-    setSettings((current) => {
-      const missed = sanitizeMissed(current.missed);
-      const existing = missed.find((item) => item.date === iso);
-      const units = existing?.units ?? [];
-      if (units.some((candidate) => candidate.key === unit.key && candidate.daf === unit.daf && candidate.amud === unit.amud)) return current;
-      return {
-        ...current,
-        missed: [...missed.filter((item) => item.date !== iso), { date: iso, units: [...units, { key: unit.key, daf: unit.daf, amud: unit.amud }] }]
-          .sort((left, right) => left.date.localeCompare(right.date)),
-        doneToday: iso === todayIso ? null : current.doneToday,
-      };
-    });
-    setNotice({ text: i18n.t("markedMissedAmud", { name: amud ? i18n.label(amud) : `${unit.daf}${unit.amud}` }), undo: true });
-  }
-
   function markMadeUp(date: Date) {
     const iso = toISODate(date);
     remember();
@@ -631,12 +593,10 @@ export default function App() {
         />
         <MakeupList
           items={missed}
-          past={pastPlan.sessions}
           compact={compact}
           dates={dateStyle}
           suggestKey={active?.key ?? "berachos"}
           onComplete={(iso, unit) => completeAmud(parseISODate(iso), unit)}
-          onMiss={(iso, unit) => missAmud(parseISODate(iso), unit)}
           onAddDaf={addMissedDaf}
         />
         </div>
@@ -690,12 +650,8 @@ export default function App() {
           onView={setCalendarView}
           dates={dateStyle}
           missedDates={missedDates}
-          missedDays={missed}
           pastPlan={pastPlan}
-          onMiss={markMissed}
-          onMissAmud={missAmud}
           onMadeUp={markMadeUp}
-          onCompleteAmud={(date, unit) => completeAmud(date, unit)}
         />
       </div>
 
